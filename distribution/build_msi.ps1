@@ -1,6 +1,10 @@
 # VoxelShift MSI Build Script (WiX Toolset)
 # Builds a classic MSI installer using WiX v4 (wix CLI)
-# Usage: .\build_msi.ps1
+# Usage: .\build_msi.ps1 [-SkipBuild]
+
+param (
+    [switch]$SkipBuild
+)
 
 Write-Host "[*] VoxelShift MSI Build Script" -ForegroundColor Cyan
 Write-Host ""
@@ -67,9 +71,16 @@ function Convert-TextToRtf([string]$text) {
     return "{\rtf1\ansi\deff0\viewkind4\uc1\pard`r`n$body`r`n}"
 }
 
+$global:fileCount = 0
+
 function Write-DirectoryTree($writer, $basePath, $path, $componentIds) {
     $files = Get-ChildItem -Path $path -File
     foreach ($file in $files) {
+        $global:fileCount++
+        if ($global:fileCount % 100 -eq 0) {
+            Write-Host -NoNewline "."
+        }
+        
         $cmpId = Get-PathId "cmp" $basePath $file.FullName
         $fileId = Get-PathId "fil" $basePath $file.FullName
         $writer.WriteStartElement("Component")
@@ -135,17 +146,21 @@ try {
     Require-Command wix
 
     # Get dependencies
-    Write-Host "[*] Getting Flutter dependencies..." -ForegroundColor Yellow
-    flutter pub get
-    if ($LASTEXITCODE -ne 0) {
-        throw "Failed to get dependencies"
-    }
+    if (-not $SkipBuild) {
+        Write-Host "[*] Getting Flutter dependencies..." -ForegroundColor Yellow
+        flutter pub get
+        if ($LASTEXITCODE -ne 0) {
+            throw "Failed to get dependencies"
+        }
 
-    # Build Windows app (release)
-    Write-Host "`n[*] Building Flutter Windows app (Release)..." -ForegroundColor Yellow
-    flutter build windows --release
-    if ($LASTEXITCODE -ne 0) {
-        throw "Failed to build Windows app"
+        # Build Windows app (release)
+        Write-Host "`n[*] Building Flutter Windows app (Release)..." -ForegroundColor Yellow
+        flutter build windows --release
+        if ($LASTEXITCODE -ne 0) {
+            throw "Failed to build Windows app"
+        }
+    } else {
+        Write-Host "[*] Skipping Flutter build (assumed pre-built)..." -ForegroundColor Gray
     }
 
     $pubspecPath = Join-Path $rootPath "pubspec.yaml"
