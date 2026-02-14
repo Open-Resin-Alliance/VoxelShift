@@ -277,7 +277,7 @@ Uint8List _decodeRle(Uint8List data, int pixelCount) {
   return output;
 }
 
-// ── Area statistics ─────────────────────────────────────────
+// ── Area statistics (with 8-connected island detection) ───────
 
 LayerAreaInfo _computeLayerArea(
   Uint8List greyPixels,
@@ -286,36 +286,98 @@ LayerAreaInfo _computeLayerArea(
   double xPixelSizeMm,
   double yPixelSizeMm,
 ) {
-  int nonZeroCount = 0;
+  final pixelCount = width * height;
+  final visited = Uint32List((pixelCount + 31) >> 5);
+  
+  // Inline bit helpers
+  bool isVisited(int idx) => (visited[idx >> 5] & (1 << (idx & 31))) != 0;
+  void markVisited(int idx) => visited[idx >> 5] |= (1 << (idx & 31));
+
   int minX = width, minY = height, maxX = 0, maxY = 0;
+  final islandSizes = <int>[]; // Pixel count per island
+
+  // Helper stack for iterative DFS (Flood Fill)
+  // Stores packed coordinates: (y << 16) | x
+  final stack = <int>[];
+
+  // Directions for 8-connected neighbors: (dx, dy)
+  const dxOffsets = [-1, 0, 1, -1, 1, -1, 0, 1];
+  const dyOffsets = [-1, -1, -1, 0, 0, 1, 1, 1];
 
   for (int y = 0; y < height; y++) {
     final rowOffset = y * width;
     for (int x = 0; x < width; x++) {
-      if (greyPixels[rowOffset + x] > 0) {
-        nonZeroCount++;
+      final rootIdx = rowOffset + x;
+      
+      if (greyPixels[rootIdx] > 0 && !isVisited(rootIdx)) {
+        // Start new island
+        int currentIslandPixelCount = 0;
+        
+        stack.add((y << 16) | x);
+        markVisited(rootIdx);
+        currentIslandPixelCount++;
+        
+        // Update bounding box for the start point
         if (x < minX) minX = x;
         if (x > maxX) maxX = x;
         if (y < minY) minY = y;
         if (y > maxY) maxY = y;
+
+        while (stack.isNotEmpty) {
+          final packed = stack.removeLast();
+          final cy = packed >> 16;
+          final cx = packed & 0xFFFF;
+          
+          // Check 8 neighbors
+          for (int i = 0; i < 8; i++) {
+            final nx = cx + dxOffsets[i];
+            final ny = cy + dyOffsets[i];
+
+            if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+              final nIdx = ny * width + nx;
+              if (greyPixels[nIdx] > 0 && !isVisited(nIdx)) {
+                markVisited(nIdx);
+                stack.add((ny << 16) | nx);
+                currentIslandPixelCount++;
+
+                // Bounding box updates
+                if (nx < minX) minX = nx;
+                if (nx > maxX) maxX = nx;
+                if (ny < minY) minY = ny;
+                if (ny > maxY) maxY = ny;
+              }
+            }
+          }
+        }
+        islandSizes.add(currentIslandPixelCount);
       }
     }
   }
 
-  if (nonZeroCount == 0) return LayerAreaInfo.empty;
+  if (islandSizes.isEmpty) return LayerAreaInfo.empty;
 
   final pixelArea = xPixelSizeMm * yPixelSizeMm;
-  final totalArea = nonZeroCount * pixelArea;
+  
+  double totalArea = 0;
+  double largest = 0;
+  double smallest = double.infinity;
+
+  for (final count in islandSizes) {
+    final areaBytes = count * pixelArea;
+    totalArea += areaBytes;
+    if (areaBytes > largest) largest = areaBytes;
+    if (areaBytes < smallest) smallest = areaBytes;
+  }
 
   return LayerAreaInfo(
     totalSolidArea: totalArea,
-    largestArea: totalArea,
-    smallestArea: totalArea,
+    largestArea: largest,
+    smallestArea: smallest,
     minX: minX,
     minY: minY,
     maxX: maxX,
     maxY: maxY,
-    areaCount: 1,
+    areaCount: islandSizes.length,
   );
 }
 
