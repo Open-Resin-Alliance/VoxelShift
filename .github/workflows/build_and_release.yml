@@ -1,0 +1,68 @@
+name: Build & Release MSI
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build-msi:
+    name: Build MSI Installer
+    runs-on: windows-latest
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup .NET (for WiX)
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Install WiX Toolset
+        run: |
+          dotnet tool install --global wix
+          wix extension add WixToolset.UI.wixext
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Install Dependencies
+        run: flutter pub get
+        working-directory: .
+
+      - name: Build MSI
+        shell: powershell
+        run: |
+          cd distribution
+          .\build_msi.ps1
+
+      - name: Locate MSI File
+        id: locate_msi
+        shell: powershell
+        run: |
+          $msiFile = Get-ChildItem -Path "distribution/releases" -Filter "*.msi" | Select-Object -First 1
+          echo "MSI_PATH=$($msiFile.FullName)" >> $env:GITHUB_ENV
+          echo "MSI_NAME=$($msiFile.Name)" >> $env:GITHUB_ENV
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: VoxelShift-Installer
+          path: ${{ env.MSI_PATH }}
+
+      - name: Create Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v1
+        with:
+          files: ${{ env.MSI_PATH }}
+          generate_release_notes: true
+          draft: false
+          prerelease: false

@@ -1,0 +1,85 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Fragment>
+    <DirectoryRef Id="INSTALLFOLDER">
+      <Component Id="cmp2357CBE00E0A8098" Guid="*">
+        <File Id="fil2357CBE00E0A8098" Source="C:\Projects\CTB2NanoDLP\VoxelShift\voxelshift\build\windows\x64\runner\Release\flutter_windows.dll" />
+      </Component>
+      <Component Id="cmpC60B8ECCBB89D8E6" Guid="*">
+        <File Id="filC60B8ECCBB89D8E6" Source="C:\Projects\CTB2NanoDLP\VoxelShift\voxelshift\build\windows\x64\runner\Release\screen_retriever_windows_plugin.dll" />
+      </Component>
+      <Component Id="cmp2DD30734478253E6" Guid="*">
+        <File Id="fil2DD30734478253E6" Source="C:\Projects\CTB2NanoDLP\VoxelShift\voxelshift\build\windows\x64\runner\Release\voxelshift.exe" />
+      </Component>
+      <Component Id="cmp629E56ECA5CF438B" Guid="*">
+        <File Id="fil629E56ECA5CF438B" Source="C:\Projects\CTB2NanoDLP\VoxelShift\voxelshift\build\windows\x64\runner\Release\voxelshift.msix" />
+      </Component>
+      <Component Id="cmp1AA1E8408E166B8D" Guid="*">
+        <File Id="fil1AA1E8408E166B8D" Source="C:\Projects\CTB2NanoDLP\VoxelShift\voxelshift\build\windows\x64\runner\Release\window_manager_plugin.dll" />
+      </Component>
+      <Directory Id="dirA17C9AAA61E80A1B" Name="data">
+        <Component Id="cmpAB523DDB54554BB2" Guid="*">
+          <File Id="filAB523DDB54554BB2" Source="C:\Projects\CTB2NanoDLP\VoxelShift\voxelshift\build\windows\x64\runner\Release\data\app.so" />
+        </Component>
+        <Component Id="cmpFB9B08033A8B9516" Guid="*">
+          <File Id="filFB9B08033A8B9516" Source="C:\Projects\CTB2NanoDLP\VoxelShift\voxelshift\build\windows\x64\runner\Release\data\icudtl.dat" />
+        </Component>
+        <Directory Id="dir6EBA1A2AD4D208DF" Name="flutter_assets">
+          <Component Id="cmp011A5D05897D74DA" Guid="*">
+            <File Id="fil011A5D05897D74DA" Source="C:\Projects\CTB2NanoDLP\VoxelShift\voxelshift\build\windows\x64\runner\Release\data\flutter_assets\AssetManifest.bin" />
+          </Component>
+          <Component Id="cmp2F44E3DE35DD118E" Guid="*">
+            <File Id="fil2F44E3DE35DD118E" Source="C:\Projects\CTB2NanoDLP\VoxelShift\voxelshift\build\windows\x64\runner\Release\data\flutter_assets\FontManifest.json" />
+          </Component>
+          <Component Id="cmp90ACE07801F1C788" Guid="*">
+            <File Id="fil90ACE07801F1C788" Source="C:\Projects\CTB2NanoDLP\VoxelShift\voxelshift\build\windows\x64\runner\Release\data\flutter_assets\NativeAssetsManifest.json" />
+          </Component>
+          <Component Id="cmp0C2709083F52DDF3" Guid="*">
+            <File Id="fil0C2709083F52DDF3" Source="C:\Projects\CTB2NanoDLP\VoxelShift\voxelshift\build\windows\x64\runner\Release\data\flutter_assets\NOTICES.Z" />
+          </Component>
+          <Directory Id="dirB4E9BC325A18EDD7" Name="fonts">
+            <Component Id="cmp1CBB6A5178C698B5" Guid="*">
+              <File Id="fil1CBB6A5178C698B5" Source="C:\Projects\CTB2NanoDLP\VoxelShift\voxelshift\build\windows\x64\runner\Release\data\flutter_assets\fonts\MaterialIcons-Regular.otf" />
+            </Component>
+          </Directory>
+          <Directory Id="dir073934439F2A5E2F" Name="packages">
+            <Directory Id="dir7B26524CD18A4F2A" Name="cupertino_icons">
+              <Directory Id="dirB6562E8BDC09D34F" Name="assets">
+                <Component Id="cmp13FC8077591E0185" Guid="*">
+                  <File Id="fil13FC8077591E0185" Source="C:\Projects\CTB2NanoDLP\VoxelShift\voxelshift\build\windows\x64\runner\Release\data\flutter_assets\packages\cupertino_icons\assets\CupertinoIcons.ttf" />
+                </Component>
+              </Directory>
+            </Directory>
+          </Directory>
+          <Directory Id="dir75CC020C86805BF7" Name="shaders">
+            <Component Id="cmp97AD05C02FF63DD0" Guid="*">
+              <File Id="fil97AD05C02FF63DD0" Source="C:\Projects\CTB2NanoDLP\VoxelShift\voxelshift\build\windows\x64\runner\Release\data\flutter_assets\shaders\ink_sparkle.frag" />
+            </Component>
+            <Component Id="cmp7613CEDF8E2A8E2B" Guid="*">
+              <File Id="fil7613CEDF8E2A8E2B" Source="C:\Projects\CTB2NanoDLP\VoxelShift\voxelshift\build\windows\x64\runner\Release\data\flutter_assets\shaders\stretch_effect.frag" />
+            </Component>
+          </Directory>
+        </Directory>
+      </Directory>
+    </DirectoryRef>
+  </Fragment>
+  <Fragment>
+    <ComponentGroup Id="AppFiles">
+      <ComponentRef Id="cmp2357CBE00E0A8098" />
+      <ComponentRef Id="cmpC60B8ECCBB89D8E6" />
+      <ComponentRef Id="cmp2DD30734478253E6" />
+      <ComponentRef Id="cmp629E56ECA5CF438B" />
+      <ComponentRef Id="cmp1AA1E8408E166B8D" />
+      <ComponentRef Id="cmpAB523DDB54554BB2" />
+      <ComponentRef Id="cmpFB9B08033A8B9516" />
+      <ComponentRef Id="cmp011A5D05897D74DA" />
+      <ComponentRef Id="cmp2F44E3DE35DD118E" />
+      <ComponentRef Id="cmp90ACE07801F1C788" />
+      <ComponentRef Id="cmp0C2709083F52DDF3" />
+      <ComponentRef Id="cmp1CBB6A5178C698B5" />
+      <ComponentRef Id="cmp13FC8077591E0185" />
+      <ComponentRef Id="cmp97AD05C02FF63DD0" />
+      <ComponentRef Id="cmp7613CEDF8E2A8E2B" />
+    </ComponentGroup>
+  </Fragment>
+</Wix>

@@ -1,0 +1,95 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Flutter App - Debug",
+      "request": "launch",
+      "type": "dart",
+      "program": "lib/main.dart",
+      "args": [],
+      "cwd": "${workspaceFolder}",
+      "deviceId": "windows",
+      "console": "internalConsole"
+    },
+    {
+      "name": "Flutter App - Profile Mode (Fast)",
+      "request": "launch",
+      "type": "dart",
+      "program": "lib/main.dart",
+      "args": ["--profile"],
+      "cwd": "${workspaceFolder}",
+      "deviceId": "windows",
+      "console": "internalConsole"
+    },
+    {
+      "name": "Flutter App - Release Mode (Fastest)",
+      "request": "launch",
+      "type": "dart",
+      "program": "lib/main.dart",
+      "args": ["--release"],
+      "cwd": "${workspaceFolder}",
+      "deviceId": "windows",
+      "console": "internalConsole"
+    },
+    {
+      "name": "Unit Tests - Debug",
+      "type": "dart",
+      "request": "launch",
+      "program": "test/ctb_conversion_test.dart",
+      "cwd": "${workspaceFolder}",
+      "console": "internalConsole",
+      "args": []
+    },
+    {
+      "name": "Unit Tests - Profile Mode (50ms/layer estimated)",
+      "type": "dart",
+      "request": "launch",
+      "program": "test/ctb_conversion_test.dart",
+      "cwd": "${workspaceFolder}",
+      "console": "internalConsole",
+      "args": ["--verbose"],
+      "preLaunchTask": "build-profile"
+    },
+    {
+      "name": "Unit Tests - Release Mode (10-20ms/layer estimated)",
+      "type": "dart",
+      "request": "launch",
+      "program": "test/ctb_conversion_test.dart",
+      "cwd": "${workspaceFolder}",
+      "console": "internalConsole",
+      "args": ["--verbose"],
+      "preLaunchTask": "build-release"
+    },
+    {
+      "name": "Convert CTB (Debug - Baseline)",
+      "type": "dart",
+      "request": "launch",
+      "program": "bin/convert_ctb.dart",
+      "args": [
+        "E:\\VoxelShift_TestData\\A.ctb",
+        "E:\\VoxelShift_TestData\\output\\A_debug.nanodlp"
+      ],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "Convert CTB (Profile - Optimized)",
+      "type": "dart",
+      "request": "launch",
+      "program": "bin/convert_ctb.dart",
+      "args": [
+        "E:\\VoxelShift_TestData\\A.ctb",
+        "E:\\VoxelShift_TestData\\output\\A_profile.nanodlp",
+        "--profile"
+      ],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal"
+    }
+  ],
+  "compounds": [
+    {
+      "name": "Run Conversion Pipeline (Profile)",
+      "configurations": ["Convert CTB (Profile - Optimized)"]
+    }
+  ]
+}

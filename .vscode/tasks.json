@@ -1,0 +1,168 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "flutter: build-debug",
+      "type": "shell",
+      "command": "flutter",
+      "args": ["build", "windows"],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": ["$dart"],
+      "presentation": {
+        "echo": true,
+        "reveal": "silent",
+        "focus": false,
+        "panel": "shared"
+      }
+    },
+    {
+      "label": "build-profile",
+      "type": "shell",
+      "command": "flutter",
+      "args": ["build", "windows", "--profile"],
+      "isBackground": false,
+      "problemMatcher": ["$dart"],
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": true,
+        "panel": "new"
+      }
+    },
+    {
+      "label": "build-release",
+      "type": "shell",
+      "command": "flutter",
+      "args": ["build", "windows", "--release"],
+      "isBackground": false,
+      "problemMatcher": ["$dart"],
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": true,
+        "panel": "new"
+      }
+    },
+    {
+      "label": "flutter: run (windows)",
+      "type": "shell",
+      "command": "flutter",
+      "args": ["run", "-d", "windows"],
+      "isBackground": false,
+      "problemMatcher": ["$dart"],
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": true,
+        "panel": "shared"
+      }
+    },
+    {
+      "label": "flutter: run profile (windows)",
+      "type": "shell",
+      "command": "flutter",
+      "args": ["run", "-d", "windows", "--profile"],
+      "isBackground": false,
+      "problemMatcher": ["$dart"],
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": true,
+        "panel": "shared"
+      }
+    },
+    {
+      "label": "flutter: run release (windows)",
+      "type": "shell",
+      "command": "flutter",
+      "args": ["run", "-d", "windows", "--release"],
+      "isBackground": false,
+      "problemMatcher": ["$dart"],
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": true,
+        "panel": "shared"
+      }
+    },
+    {
+      "label": "test: conversion (debug)",
+      "type": "shell",
+      "command": "flutter",
+      "args": ["test", "test/ctb_conversion_test.dart", "--timeout", "5x"],
+      "isBackground": false,
+      "problemMatcher": ["$dart"],
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": true,
+        "panel": "shared"
+      }
+    },
+    {
+      "label": "test: conversion (profile - 50ms/layer estimated)",
+      "type": "shell",
+      "command": "flutter",
+      "args": [
+        "test",
+        "test/ctb_conversion_test.dart",
+        "--timeout",
+        "2x",
+        "-v"
+      ],
+      "isBackground": false,
+      "problemMatcher": ["$dart"],
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": true,
+        "panel": "shared"
+      }
+    },
+    {
+      "label": "analyze",
+      "type": "shell",
+      "command": "dart",
+      "args": ["analyze", "lib/"],
+      "isBackground": false,
+      "problemMatcher": ["$dart"],
+      "presentation": {
+        "echo": true,
+        "reveal": "silent",
+        "focus": false,
+        "panel": "shared"
+      }
+    },
+    {
+      "label": "format",
+      "type": "shell",
+      "command": "dart",
+      "args": ["format", "--line-length=80", "lib/", "test/"],
+      "isBackground": false,
+      "problemMatcher": [],
+      "presentation": {
+        "echo": true,
+        "reveal": "silent",
+        "focus": false,
+        "panel": "shared"
+      }
+    },
+    {
+      "label": "pub get",
+      "type": "shell",
+      "command": "flutter",
+      "args": ["pub", "get"],
+      "isBackground": false,
+      "problemMatcher": ["$dart"],
+      "presentation": {
+        "echo": true,
+        "reveal": "silent",
+        "focus": false,
+        "panel": "shared"
+      }
+    }
+  ]
+}
