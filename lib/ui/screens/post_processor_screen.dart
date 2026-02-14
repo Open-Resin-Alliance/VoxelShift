@@ -352,6 +352,7 @@ class _PostProcessorScreenState extends State<PostProcessorScreen>
       _errorMessage = null;
       _result = null;
       _convertProgress = 0.0;
+      _conversionProgress = null;
     });
 
     try {
@@ -474,19 +475,19 @@ class _PostProcessorScreenState extends State<PostProcessorScreen>
         return;
       }
 
-      // Wait for metadata & resolve plateId (keep progress moving)
-      if (mounted) {
-        setState(() => _uploadProgress = _uploadProgress.clamp(0.0, 0.95));
-      }
+      // Update slicing state logic
+      setState(() => _uploadProgress = 1.0);
+      
+      // Wait for metadata & resolve plateId
       final plate = await client.waitForPlateReady(
         plateId: uploadResult.plateId,
         jobName: jobName,
-        onProgress: (p) {
-          if (!mounted) return;
-          final scaled = 0.95 + (p * 0.05);
-          if (_shouldUpdateProgress(scaled)) {
-            setState(() => _uploadProgress = scaled.clamp(0.0, 1.0));
-          }
+        timeout: const Duration(minutes: 3),
+        onProgress: (_) {
+           // Ignore fake progress based on timeout
+           if (mounted && !_isSlicing) {
+             setState(() => _isSlicing = true);
+           }
         },
       );
 
@@ -980,7 +981,7 @@ class _PostProcessorScreenState extends State<PostProcessorScreen>
 
       case _Phase.converting:
         return _buildActivityWidget(
-          'Converting...',
+          _conversionProgress?.phase ?? 'Initializing...',
           key: 'activity',
           progress: _convertProgress,
           color: Colors.cyan,
@@ -997,7 +998,7 @@ class _PostProcessorScreenState extends State<PostProcessorScreen>
       case _Phase.uploading:
         return _buildActivityWidget(
           _isSlicing 
-            ? 'Processing/Slicing on device...' 
+            ? 'Processing on device...' 
             : 'Uploading to ${widget.activeDevice!.displayName}...',
           key: _isSlicing ? 'slicing' : 'activity',
           progress: _uploadProgress,
@@ -1038,7 +1039,7 @@ class _PostProcessorScreenState extends State<PostProcessorScreen>
           ClipRRect(
             borderRadius: BorderRadius.circular(8),
             child: LinearProgressIndicator(
-              value: progress,
+              value: isSlicing ? null : progress,
               color: color,
               backgroundColor: color.withValues(alpha: 0.2),
               minHeight: 6,
@@ -1046,10 +1047,11 @@ class _PostProcessorScreenState extends State<PostProcessorScreen>
           ),
           const SizedBox(height: 8),
           Text(
-            isSlicing 
-              ? 'Please wait, large files may take a minute...'
-              : '${(progress * 100).toStringAsFixed(0)}%'
-                '${_conversionProgress?.workers != null ? ' • ${_conversionProgress!.workers} workers' : ''}',
+            isSlicing
+                ? 'Processing on device... This may take a while.'
+                : '${(progress * 100).toStringAsFixed(0)}%'
+                    '${_conversionProgress != null ? " (${_conversionProgress!.current}/${_conversionProgress!.total})" : ""}'
+                    '${_conversionProgress?.workers != null ? ' • ${_conversionProgress!.workers} workers' : ''}',
             style: TextStyle(
               fontSize: 12,
               color: Colors.white.withValues(alpha: 0.5),
