@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:window_manager/window_manager.dart';
 
 import 'core/network/active_device_store.dart';
@@ -11,6 +12,12 @@ import 'ui/screens/network_screen.dart';
 import 'ui/screens/onboarding_screen.dart';
 import 'ui/screens/post_processor_screen.dart';
 import 'ui/screens/settings_screen.dart';
+import 'core/conversion/conversion_analytics.dart';
+import 'ui/widgets/analytics_overlay.dart';
+
+class _ToggleAnalyticsIntent extends Intent {
+  const _ToggleAnalyticsIntent();
+}
 
 class _CliOptions {
   final bool help;
@@ -55,12 +62,13 @@ Future<void> main(List<String> args) async {
 
   if (postProcessorFile != null && (Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
     await windowManager.ensureInitialized();
-    const windowOptions = WindowOptions(
+    final windowOptions = WindowOptions(
       size: Size(660, 760),
       minimumSize: Size(600, 700),
       center: true,
-      backgroundColor: Colors.transparent,
-      titleBarStyle: TitleBarStyle.hidden,
+      backgroundColor:
+          Platform.isMacOS ? const Color(0xFF0F172A) : Colors.transparent,
+          titleBarStyle: TitleBarStyle.hidden,
       windowButtonVisibility: false,
     );
 
@@ -68,7 +76,9 @@ Future<void> main(List<String> args) async {
       await windowManager.show();
       await windowManager.focus();
       await windowManager.setResizable(false);
-      await windowManager.setAsFrameless();
+      if (!Platform.isMacOS) {
+        await windowManager.setAsFrameless();
+      }
     });
   }
 
@@ -169,32 +179,80 @@ class VoxelShiftApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: AppTheme.dark,
       builder: (context, child) {
-        if (postProcessorFile == null) {
-          return child ?? const SizedBox.shrink();
+        Widget content = child ?? const SizedBox.shrink();
+
+        if (postProcessorFile != null && !Platform.isMacOS) {
+          const radius = 20.0;
+          content = Padding(
+            padding: const EdgeInsets.all(12),
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: const Color(0xFF0F172A),
+                borderRadius: BorderRadius.circular(radius),
+                border: Border.all(
+                  color: Colors.white.withValues(alpha: 0.12),
+                  width: 1,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.35),
+                    blurRadius: 24,
+                    offset: const Offset(0, 10),
+                  ),
+                ],
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(radius),
+                child: content,
+              ),
+            ),
+          );
         }
 
-        const radius = 20.0;
-        return Padding(
-          padding: const EdgeInsets.all(12),
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: const Color(0xFF0F172A),
-              borderRadius: BorderRadius.circular(radius),
-              border: Border.all(
-                color: Colors.white.withValues(alpha: 0.12),
-                width: 1,
+        return Shortcuts(
+          shortcuts: {
+            LogicalKeySet(
+              LogicalKeyboardKey.control,
+              LogicalKeyboardKey.shift,
+              LogicalKeyboardKey.keyA,
+            ): const _ToggleAnalyticsIntent(),
+            LogicalKeySet(
+              LogicalKeyboardKey.meta,
+              LogicalKeyboardKey.shift,
+              LogicalKeyboardKey.keyA,
+            ): const _ToggleAnalyticsIntent(),
+          },
+          child: Actions(
+            actions: {
+              _ToggleAnalyticsIntent: CallbackAction<_ToggleAnalyticsIntent>(
+                onInvoke: (intent) {
+                  AnalyticsBus.toggle();
+                  return null;
+                },
               ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.35),
-                  blurRadius: 24,
-                  offset: const Offset(0, 10),
+            },
+            child: Stack(
+              children: [
+                content,
+                ValueListenableBuilder<bool>(
+                  valueListenable: AnalyticsBus.enabled,
+                  builder: (context, enabled, _) {
+                    if (!enabled) return const SizedBox.shrink();
+                    return ValueListenableBuilder(
+                      valueListenable: AnalyticsBus.latest,
+                      builder: (context, report, __) {
+                        if (report == null) return const SizedBox.shrink();
+                        return Center(
+                          child: AnalyticsOverlay(
+                            analytics: report,
+                            onClose: AnalyticsBus.toggle,
+                          ),
+                        );
+                      },
+                    );
+                  },
                 ),
               ],
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(radius),
-              child: child ?? const SizedBox.shrink(),
             ),
           ),
         );

@@ -27,6 +27,7 @@ static int32_t _cpu_threads(void) {
 #else
 #include <dlfcn.h>
 #include <pthread.h>
+#include <time.h>
 #include <unistd.h>
 typedef pthread_mutex_t vs_mutex;
 static void vs_mutex_init(vs_mutex* m) { pthread_mutex_init(m, NULL); }
@@ -97,6 +98,40 @@ static int32_t g_last_process_layers_gpu_attempts = 0;
 static int32_t g_last_process_layers_gpu_successes = 0;
 static int32_t g_last_process_layers_gpu_fallbacks = 0;
 static int32_t g_last_process_layers_cuda_error = 0;
+static int32_t g_process_layers_analytics_enabled = 0;
+static int32_t g_last_process_layers_thread_count = 0;
+
+typedef struct ProcessThreadMetrics {
+  int64_t total_ns;
+  int64_t decode_ns;
+  int64_t scanline_ns;
+  int64_t compress_ns;
+  int64_t png_ns;
+  int32_t layers;
+} ProcessThreadMetrics;
+
+static ProcessThreadMetrics* g_last_thread_metrics = NULL;
+static int32_t g_last_thread_capacity = 0;
+
+#ifdef _WIN32
+static uint64_t _now_ns(void) {
+  static LARGE_INTEGER freq;
+  static int initialized = 0;
+  if (!initialized) {
+    QueryPerformanceFrequency(&freq);
+    initialized = 1;
+  }
+  LARGE_INTEGER counter;
+  QueryPerformanceCounter(&counter);
+  return (uint64_t)((counter.QuadPart * 1000000000ULL) / freq.QuadPart);
+}
+#else
+static uint64_t _now_ns(void) {
+  struct timespec ts;
+  clock_gettime(CLOCK_MONOTONIC, &ts);
+  return (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec;
+}
+#endif
 
 /**
  * @brief Override the default worker count for process_layers_batch.
@@ -104,6 +139,42 @@ static int32_t g_last_process_layers_cuda_error = 0;
  */
 void set_process_layers_batch_threads(int32_t threads) {
   g_process_layers_batch_threads = threads;
+}
+
+void set_process_layers_batch_analytics(int32_t enabled) {
+  g_process_layers_analytics_enabled = enabled ? 1 : 0;
+}
+
+int32_t process_layers_last_thread_count(void) {
+  return g_last_process_layers_thread_count;
+}
+
+void process_layers_last_thread_stats(
+    int64_t* out_total_ns,
+    int64_t* out_decode_ns,
+    int64_t* out_scanline_ns,
+    int64_t* out_compress_ns,
+    int64_t* out_png_ns,
+    int32_t* out_layers,
+    int32_t max_count) {
+  if (!out_total_ns || !out_decode_ns || !out_scanline_ns ||
+      !out_compress_ns || !out_png_ns || !out_layers || max_count <= 0) {
+    return;
+  }
+
+  const int32_t count = g_last_process_layers_thread_count;
+  if (!g_last_thread_metrics || count <= 0) return;
+  const int32_t n = count < max_count ? count : max_count;
+
+  for (int32_t i = 0; i < n; i++) {
+    const ProcessThreadMetrics* m = &g_last_thread_metrics[i];
+    out_total_ns[i] = m->total_ns;
+    out_decode_ns[i] = m->decode_ns;
+    out_scanline_ns[i] = m->scanline_ns;
+    out_compress_ns[i] = m->compress_ns;
+    out_png_ns[i] = m->png_ns;
+    out_layers[i] = m->layers;
+  }
 }
 
 /**
@@ -373,6 +444,10 @@ typedef struct ProcessBatchWork {
   int32_t next_index;
   int32_t failed;
   vs_mutex lock;
+
+  int32_t analytics_enabled;
+  ProcessThreadMetrics* thread_metrics;
+  int32_t thread_metrics_count;
 } ProcessBatchWork;
 
 typedef struct ProcessThreadScratch {
@@ -448,7 +523,21 @@ static void _free_process_thread_scratch(ProcessThreadScratch* s) {
   s->compressed_cap = 0;
 }
 
-static void _process_one_layer(ProcessBatchWork* w, int32_t i, ProcessThreadScratch* s) {
+static void _process_one_layer(
+    ProcessBatchWork* w,
+    int32_t i,
+    ProcessThreadScratch* s,
+    int32_t thread_index) {
+  const int analytics = w->analytics_enabled &&
+      w->thread_metrics != NULL &&
+      thread_index >= 0 &&
+      thread_index < w->thread_metrics_count;
+  uint64_t t_start = 0;
+  uint64_t t_decode = 0;
+  uint64_t t_scanline = 0;
+  uint64_t t_compress = 0;
+  uint64_t t_png = 0;
+  if (analytics) t_start = _now_ns();
   const int32_t off = w->input_offsets[i];
   const int32_t len = w->input_lengths[i];
 
@@ -474,6 +563,8 @@ static void _process_one_layer(ProcessBatchWork* w, int32_t i, ProcessThreadScra
     return;
   }
 
+  uint64_t t0 = 0;
+  if (analytics) t0 = _now_ns();
   const int ok_decode = decrypt_and_decode_layer(
       w->input_blob + off,
       len,
@@ -496,11 +587,13 @@ static void _process_one_layer(ProcessBatchWork* w, int32_t i, ProcessThreadScra
     _set_process_failed(w);
     return;
   }
+  if (analytics) t_decode += (_now_ns() - t0);
 
   int32_t backend_used = 0;
   int32_t gpu_attempted = 0;
   int32_t gpu_succeeded = 0;
 
+  if (analytics) t0 = _now_ns();
   if (!_build_scanlines_auto(
           pixels,
           w->src_width,
@@ -516,6 +609,7 @@ static void _process_one_layer(ProcessBatchWork* w, int32_t i, ProcessThreadScra
     _set_process_failed(w);
     return;
   }
+  if (analytics) t_scanline += (_now_ns() - t0);
 
   if (backend_used == 1 || backend_used == 3 || gpu_attempted) {
     vs_mutex_lock(&w->lock);
@@ -540,6 +634,7 @@ static void _process_one_layer(ProcessBatchWork* w, int32_t i, ProcessThreadScra
   if (level < 0) level = 0;
   if (level > 9) level = 9;
 
+  if (analytics) t0 = _now_ns();
   unsigned long comp_len = s->compressed_cap;
   const int ok_comp = g_zlib.compress2_ptr(
       compressed,
@@ -552,8 +647,10 @@ static void _process_one_layer(ProcessBatchWork* w, int32_t i, ProcessThreadScra
     _set_process_failed(w);
     return;
   }
+  if (analytics) t_compress += (_now_ns() - t0);
 
   int32_t png_len = 0;
+  if (analytics) t0 = _now_ns();
   uint8_t* png = _build_png_from_idat(
       w->out_width,
       w->height,
@@ -567,14 +664,32 @@ static void _process_one_layer(ProcessBatchWork* w, int32_t i, ProcessThreadScra
     _set_process_failed(w);
     return;
   }
+  if (analytics) t_png += (_now_ns() - t0);
 
   w->out_items[i] = png;
   w->out_sizes[i] = png_len;
+
+  if (analytics) {
+    ProcessThreadMetrics* m = &w->thread_metrics[thread_index];
+    m->layers += 1;
+    m->total_ns += (_now_ns() - t_start);
+    m->decode_ns += t_decode;
+    m->scanline_ns += t_scanline;
+    m->compress_ns += t_compress;
+    m->png_ns += t_png;
+  }
 }
 
 #ifdef _WIN32
+typedef struct ProcessThreadParams {
+  ProcessBatchWork* work;
+  int32_t thread_index;
+} ProcessThreadParams;
+
 static DWORD WINAPI _process_batch_worker(LPVOID arg) {
-  ProcessBatchWork* w = (ProcessBatchWork*)arg;
+  ProcessThreadParams* p = (ProcessThreadParams*)arg;
+  ProcessBatchWork* w = p->work;
+  const int32_t thread_index = p->thread_index;
   ProcessThreadScratch s = {0};
   if (!_init_process_thread_scratch(w, &s)) {
     _set_process_failed(w);
@@ -584,7 +699,7 @@ static DWORD WINAPI _process_batch_worker(LPVOID arg) {
   int32_t start, end;
   while (_take_process_range(w, 4, &start, &end)) {
     for (int32_t idx = start; idx < end; idx++) {
-      _process_one_layer(w, idx, &s);
+      _process_one_layer(w, idx, &s, thread_index);
     }
   }
 
@@ -592,8 +707,15 @@ static DWORD WINAPI _process_batch_worker(LPVOID arg) {
   return 0;
 }
 #else
+typedef struct ProcessThreadParams {
+  ProcessBatchWork* work;
+  int32_t thread_index;
+} ProcessThreadParams;
+
 static void* _process_batch_worker(void* arg) {
-  ProcessBatchWork* w = (ProcessBatchWork*)arg;
+  ProcessThreadParams* p = (ProcessThreadParams*)arg;
+  ProcessBatchWork* w = p->work;
+  const int32_t thread_index = p->thread_index;
   ProcessThreadScratch s = {0};
   if (!_init_process_thread_scratch(w, &s)) {
     _set_process_failed(w);
@@ -603,7 +725,7 @@ static void* _process_batch_worker(void* arg) {
   int32_t start, end;
   while (_take_process_range(w, 4, &start, &end)) {
     for (int32_t idx = start; idx < end; idx++) {
-      _process_one_layer(w, idx, &s);
+      _process_one_layer(w, idx, &s, thread_index);
     }
   }
 
@@ -809,6 +931,9 @@ int process_layers_batch(
   work.last_cuda_error = 0;
   work.next_index = 0;
   work.failed = 0;
+  work.analytics_enabled = g_process_layers_analytics_enabled;
+  work.thread_metrics = NULL;
+  work.thread_metrics_count = 0;
   vs_mutex_init(&work.lock);
 
   int32_t threads = thread_count > 0 ? thread_count :
@@ -822,6 +947,20 @@ int process_layers_batch(
   work.allow_gpu = 1;
 
   if (threads == 1) {
+    if (work.analytics_enabled) {
+      if (g_last_thread_metrics) {
+        free(g_last_thread_metrics);
+        g_last_thread_metrics = NULL;
+        g_last_thread_capacity = 0;
+      }
+      g_last_thread_metrics = (ProcessThreadMetrics*)calloc(
+          1, sizeof(ProcessThreadMetrics));
+      if (g_last_thread_metrics) {
+        g_last_thread_capacity = 1;
+        work.thread_metrics = g_last_thread_metrics;
+        work.thread_metrics_count = 1;
+      }
+    }
     ProcessThreadScratch s = {0};
     if (!_init_process_thread_scratch(&work, &s)) {
       vs_mutex_destroy(&work.lock);
@@ -830,7 +969,7 @@ int process_layers_batch(
     }
 
     for (int32_t i = 0; i < count; i++) {
-      _process_one_layer(&work, i, &s);
+      _process_one_layer(&work, i, &s, 0);
       if (work.failed) break;
     }
 
@@ -838,14 +977,38 @@ int process_layers_batch(
   } else {
 #ifdef _WIN32
     HANDLE* hs = (HANDLE*)malloc((size_t)threads * sizeof(HANDLE));
+    ProcessThreadParams* params =
+        (ProcessThreadParams*)malloc((size_t)threads * sizeof(ProcessThreadParams));
     if (!hs) {
       vs_mutex_destroy(&work.lock);
       free(item_outputs); free(item_sizes); free(offs); free(lens); free(areas);
       return 0;
     }
+    if (!params) {
+      free(hs);
+      vs_mutex_destroy(&work.lock);
+      free(item_outputs); free(item_sizes); free(offs); free(lens); free(areas);
+      return 0;
+    }
+    if (work.analytics_enabled) {
+      if (g_last_thread_metrics) {
+        free(g_last_thread_metrics);
+        g_last_thread_metrics = NULL;
+        g_last_thread_capacity = 0;
+      }
+      g_last_thread_metrics = (ProcessThreadMetrics*)calloc(
+          (size_t)threads, sizeof(ProcessThreadMetrics));
+      if (g_last_thread_metrics) {
+        g_last_thread_capacity = threads;
+        work.thread_metrics = g_last_thread_metrics;
+        work.thread_metrics_count = threads;
+      }
+    }
     int32_t started = 0;
     for (int32_t t = 0; t < threads; t++) {
-      hs[t] = CreateThread(NULL, 0, _process_batch_worker, &work, 0, NULL);
+      params[t].work = &work;
+      params[t].thread_index = t;
+      hs[t] = CreateThread(NULL, 0, _process_batch_worker, &params[t], 0, NULL);
       if (hs[t]) started++;
     }
     if (started == 0) {
@@ -857,25 +1020,52 @@ int process_layers_batch(
     WaitForMultipleObjects((DWORD)started, hs, TRUE, INFINITE);
     for (int32_t t = 0; t < threads; t++) if (hs[t]) CloseHandle(hs[t]);
     free(hs);
+    free(params);
 #else
     pthread_t* ts = (pthread_t*)malloc((size_t)threads * sizeof(pthread_t));
+    ProcessThreadParams* params =
+        (ProcessThreadParams*)malloc((size_t)threads * sizeof(ProcessThreadParams));
     if (!ts) {
       vs_mutex_destroy(&work.lock);
       free(item_outputs); free(item_sizes); free(offs); free(lens); free(areas);
       return 0;
     }
+    if (!params) {
+      free(ts);
+      vs_mutex_destroy(&work.lock);
+      free(item_outputs); free(item_sizes); free(offs); free(lens); free(areas);
+      return 0;
+    }
+    if (work.analytics_enabled) {
+      if (g_last_thread_metrics) {
+        free(g_last_thread_metrics);
+        g_last_thread_metrics = NULL;
+        g_last_thread_capacity = 0;
+      }
+      g_last_thread_metrics = (ProcessThreadMetrics*)calloc(
+          (size_t)threads, sizeof(ProcessThreadMetrics));
+      if (g_last_thread_metrics) {
+        g_last_thread_capacity = threads;
+        work.thread_metrics = g_last_thread_metrics;
+        work.thread_metrics_count = threads;
+      }
+    }
     int32_t started = 0;
     for (int32_t t = 0; t < threads; t++) {
-      if (pthread_create(&ts[t], NULL, _process_batch_worker, &work) == 0) started++;
+      params[t].work = &work;
+      params[t].thread_index = t;
+      if (pthread_create(&ts[t], NULL, _process_batch_worker, &params[t]) == 0) started++;
     }
     if (started == 0) {
       free(ts);
+      free(params);
       vs_mutex_destroy(&work.lock);
       free(item_outputs); free(item_sizes); free(offs); free(lens); free(areas);
       return 0;
     }
     for (int32_t t = 0; t < started; t++) pthread_join(ts[t], NULL);
     free(ts);
+    free(params);
 #endif
   }
 
@@ -894,6 +1084,7 @@ int process_layers_batch(
   g_last_process_layers_gpu_successes = work.gpu_successes;
   g_last_process_layers_gpu_fallbacks = work.gpu_fallbacks;
   g_last_process_layers_cuda_error = work.last_cuda_error;
+  g_last_process_layers_thread_count = threads;
 
   int64_t total_len = 0;
   for (int32_t i = 0; i < count; i++) {

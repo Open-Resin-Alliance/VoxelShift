@@ -2,33 +2,30 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Flutter App - Debug",
+      "name": "VoxelShift",
       "request": "launch",
       "type": "dart",
       "program": "lib/main.dart",
       "args": [],
       "cwd": "${workspaceFolder}",
-      "deviceId": "windows",
       "console": "internalConsole"
     },
     {
-      "name": "Flutter App - Profile Mode (Fast)",
+      "name": "VoxelShift (profile mode)",
       "request": "launch",
       "type": "dart",
       "program": "lib/main.dart",
-      "args": ["--profile"],
+      "flutterMode": "profile",
       "cwd": "${workspaceFolder}",
-      "deviceId": "windows",
       "console": "internalConsole"
     },
     {
-      "name": "Flutter App - Release Mode (Fastest)",
+      "name": "VoxelShift (release mode)",
       "request": "launch",
       "type": "dart",
       "program": "lib/main.dart",
-      "args": ["--release"],
+      "flutterMode": "release",
       "cwd": "${workspaceFolder}",
-      "deviceId": "windows",
       "console": "internalConsole"
     },
     {

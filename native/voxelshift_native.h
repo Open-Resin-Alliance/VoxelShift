@@ -202,6 +202,26 @@ VS_EXPORT int set_current_thread_background_priority(int32_t background);
   /// threads <= 0 resets to auto mode.
   VS_EXPORT void set_process_layers_batch_threads(int32_t threads);
 
+  /// Enable or disable analytics collection for process_layers_batch.
+  ///
+  /// When enabled, per-thread timing stats are recorded for the last batch.
+  VS_EXPORT void set_process_layers_batch_analytics(int32_t enabled);
+
+  /// Number of threads used by the most recent batch (0 if unavailable).
+  VS_EXPORT int32_t process_layers_last_thread_count(void);
+
+  /// Fill per-thread timing stats for the most recent batch.
+  ///
+  /// Arrays must be pre-allocated with length >= max_count.
+  VS_EXPORT void process_layers_last_thread_stats(
+    int64_t* out_total_ns,
+    int64_t* out_decode_ns,
+    int64_t* out_scanline_ns,
+    int64_t* out_compress_ns,
+    int64_t* out_png_ns,
+    int32_t* out_layers,
+    int32_t max_count);
+
   /// Returns backend used by the most recent process_layers_batch call.
   ///
   /// 0 = CPU, 1 = OpenCL GPU, 2 = Metal GPU, 3 = CUDA/Tensor GPU.
