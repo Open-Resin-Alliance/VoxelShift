@@ -9,7 +9,7 @@ VoxelShift is developed with the Concepts3D Athena 2 printers in mind, which we 
 
 > :warning: **VoxelShift is under active development.** Please test carefully before relying on it in production workflows, and avoid unattended prints during early setup.
 
-**Disclaimer:** This tool was rapidly prototyped with the help of Copilot, but every release goes through extensive human testing, quality control, and hands‑on code review/tweaks before distribution.
+> **Disclaimer:** This tool was rapidly prototyped with the help of Copilot, but every release goes through extensive human testing, quality control, and hands‑on code review/tweaks before distribution.
 
 ## Table of Contents
 
@@ -65,8 +65,8 @@ The following platforms are currently supported and have been tested:
 | Platform | Support | Tested |
 | --- | --- | --- |
 | Windows | ✅ Supported | ✅ Tested |
+| macOS | ✅ Supported | ✅ Tested |
 | Linux | ✅ Supported | ⚠️ Not tested |
-| macOS | ✅ Supported | ⚠️ Not tested |
 | | | |
 | Web | ❌ Not supported | ❌ Not tested |
 | Android | ❌ Not supported | ❌ Not tested |
@@ -94,13 +94,22 @@ VoxelShift can run as a lightweight post‑processor window when invoked with a 
 	- `voxelshift.exe <path-to-file>`
 	- `voxelshift.exe --file <path-to-file>`
 	- `voxelshift.exe -h` (show CLI help)
-
+	
 Windows terminal logging helpers:
 
 - `--attach-console` force attach/create a console so stdout/stderr logs stay visible.
 - `--new-console` force opening a dedicated console window.
 
 When an active NanoDLP device is configured, VoxelShift can automatically upload and optionally start the print (configurable in the UI).
+
+## Notes for Post-Processor Mode
+
+Post-Processor Mode can for example be used as part of the External Tools function in LycheeSlicer.
+To do so, the program can be added using the following paths:
+- **Windows:**
+	- `"C:\Program Files (x86)\VoxelShift\voxelshift.exe" ((file))`
+- **macOS:**
+	- `"/Applications/Voxelshift.app/Contents/MacOS/voxelshift" ((file))`
 
 ## Optional Performance Modes
 
