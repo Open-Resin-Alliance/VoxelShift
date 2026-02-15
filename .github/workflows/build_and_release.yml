@@ -120,32 +120,29 @@ jobs:
 
       - name: Create macOS DMG
         run: |
-          # Create DMG using create-dmg if available, otherwise use hdiutil
-          cd build/macos/Build/Products/Release
-          
           # Create a temporary directory for DMG contents
-          mkdir -p VoxelShift_DMG
-          cp -r VoxelShift.app VoxelShift_DMG/
+          mkdir -p /tmp/VoxelShift_DMG
+          cp -r build/macos/Build/Products/Release/VoxelShift.app /tmp/VoxelShift_DMG/
           
           # Create symlink to Applications folder in DMG
-          ln -s /Applications VoxelShift_DMG/Applications
+          ln -s /Applications /tmp/VoxelShift_DMG/Applications
           
           # Create the DMG file
-          hdiutil create -volname "VoxelShift" -srcfolder VoxelShift_DMG -ov -format UDZO -o VoxelShift.dmg
+          hdiutil create -volname "VoxelShift" -srcfolder /tmp/VoxelShift_DMG -ov -format UDZO -o VoxelShift.dmg
           
-          # Move DMG to a more accessible location
-          mv VoxelShift.dmg ../../../../../VoxelShift.dmg
+          # Cleanup temp directory
+          rm -rf /tmp/VoxelShift_DMG
 
-      - name: Create ZIP Archive (alternative to DMG)
+      - name: Create ZIP Archive
         run: |
           cd build/macos/Build/Products/Release
-          zip -r ../../../../VoxelShift-macOS.zip VoxelShift.app
+          zip -r -q ../../../../../VoxelShift-macOS.zip VoxelShift.app
 
       - name: Upload DMG Artifact
         uses: actions/upload-artifact@v4
         with:
           name: VoxelShift-macOS-DMG
-          path: build/macos/Build/Products/Release/VoxelShift.dmg
+          path: VoxelShift.dmg
 
       - name: Upload ZIP Artifact
         uses: actions/upload-artifact@v4
@@ -158,7 +155,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            build/macos/Build/Products/Release/VoxelShift.dmg
+            VoxelShift.dmg
             VoxelShift-macOS.zip
           generate_release_notes: true
           draft: false
