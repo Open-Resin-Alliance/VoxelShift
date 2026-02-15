@@ -81,6 +81,9 @@ typedef _DartProcessLayersBatch = int Function(
 typedef _NativeSetProcessBatchThreads = ffi.Void Function(ffi.Int32 threads);
 typedef _DartSetProcessBatchThreads = void Function(int threads);
 
+typedef _NativeSetProcessBatchAnalytics = ffi.Void Function(ffi.Int32 enabled);
+typedef _DartSetProcessBatchAnalytics = void Function(int enabled);
+
 typedef _NativeGetProcessLastBackend = ffi.Int32 Function();
 typedef _DartGetProcessLastBackend = int Function();
 
@@ -95,6 +98,28 @@ typedef _DartGetProcessLastGpuFallbacks = int Function();
 
 typedef _NativeGetProcessLastCudaError = ffi.Int32 Function();
 typedef _DartGetProcessLastCudaError = int Function();
+
+typedef _NativeGetProcessLastThreadCount = ffi.Int32 Function();
+typedef _DartGetProcessLastThreadCount = int Function();
+
+typedef _NativeGetProcessLastThreadStats = ffi.Void Function(
+  ffi.Pointer<ffi.Int64> outTotalNs,
+  ffi.Pointer<ffi.Int64> outDecodeNs,
+  ffi.Pointer<ffi.Int64> outScanlineNs,
+  ffi.Pointer<ffi.Int64> outCompressNs,
+  ffi.Pointer<ffi.Int64> outPngNs,
+  ffi.Pointer<ffi.Int32> outLayers,
+  ffi.Int32 maxCount,
+);
+typedef _DartGetProcessLastThreadStats = void Function(
+  ffi.Pointer<ffi.Int64> outTotalNs,
+  ffi.Pointer<ffi.Int64> outDecodeNs,
+  ffi.Pointer<ffi.Int64> outScanlineNs,
+  ffi.Pointer<ffi.Int64> outCompressNs,
+  ffi.Pointer<ffi.Int64> outPngNs,
+  ffi.Pointer<ffi.Int32> outLayers,
+  int maxCount,
+);
 
 typedef _NativeGetProcessLastGpuBatchOk = ffi.Int32 Function();
 typedef _DartGetProcessLastGpuBatchOk = int Function();
@@ -182,6 +207,24 @@ class NativeBatchLayerResult {
   });
 }
 
+class NativeThreadStats {
+  final int layers;
+  final int totalNs;
+  final int decodeNs;
+  final int scanlineNs;
+  final int compressNs;
+  final int pngNs;
+
+  const NativeThreadStats({
+    required this.layers,
+    required this.totalNs,
+    required this.decodeNs,
+    required this.scanlineNs,
+    required this.compressNs,
+    required this.pngNs,
+  });
+}
+
 class NativeLayerBatchProcess {
   NativeLayerBatchProcess._();
 
@@ -190,11 +233,14 @@ class NativeLayerBatchProcess {
   ffi.DynamicLibrary? _lib;
   _DartProcessLayersBatch? _processBatch;
   _DartSetProcessBatchThreads? _setBatchThreads;
+  _DartSetProcessBatchAnalytics? _setBatchAnalytics;
   _DartGetProcessLastBackend? _getLastBackend;
   _DartGetProcessLastGpuAttempts? _getLastGpuAttempts;
   _DartGetProcessLastGpuSuccesses? _getLastGpuSuccesses;
   _DartGetProcessLastGpuFallbacks? _getLastGpuFallbacks;
   _DartGetProcessLastCudaError? _getLastCudaError;
+  _DartGetProcessLastThreadCount? _getLastThreadCount;
+  _DartGetProcessLastThreadStats? _getLastThreadStats;
   _DartGetProcessLastGpuBatchOk? _getLastGpuBatchOk;
   _DartProcessLayersBatchPhased? _processBatchPhased;
   _DartGpuCudaInit? _cudaInit;
@@ -223,6 +269,15 @@ class NativeLayerBatchProcess {
     if (fn == null) return;
     try {
       fn(threads);
+    } catch (_) {}
+  }
+
+  void setAnalyticsEnabled(bool enabled) {
+    _ensureInit();
+    final fn = _setBatchAnalytics;
+    if (fn == null) return;
+    try {
+      fn(enabled ? 1 : 0);
     } catch (_) {}
   }
 
@@ -280,6 +335,61 @@ class NativeLayerBatchProcess {
       return fn();
     } catch (_) {
       return 0;
+    }
+  }
+
+  List<NativeThreadStats> getLastThreadStats() {
+    _ensureInit();
+    final countFn = _getLastThreadCount;
+    final statsFn = _getLastThreadStats;
+    if (countFn == null || statsFn == null) return const [];
+    int count = 0;
+    try {
+      count = countFn();
+    } catch (_) {
+      return const [];
+    }
+    if (count <= 0) return const [];
+
+    final totalPtr = malloc<ffi.Int64>(count);
+    final decodePtr = malloc<ffi.Int64>(count);
+    final scanPtr = malloc<ffi.Int64>(count);
+    final compressPtr = malloc<ffi.Int64>(count);
+    final pngPtr = malloc<ffi.Int64>(count);
+    final layersPtr = malloc<ffi.Int32>(count);
+
+    try {
+      statsFn(
+        totalPtr,
+        decodePtr,
+        scanPtr,
+        compressPtr,
+        pngPtr,
+        layersPtr,
+        count,
+      );
+
+      final stats = <NativeThreadStats>[];
+      for (int i = 0; i < count; i++) {
+        stats.add(NativeThreadStats(
+          layers: layersPtr[i],
+          totalNs: totalPtr[i],
+          decodeNs: decodePtr[i],
+          scanlineNs: scanPtr[i],
+          compressNs: compressPtr[i],
+          pngNs: pngPtr[i],
+        ));
+      }
+      return stats;
+    } catch (_) {
+      return const [];
+    } finally {
+      malloc.free(totalPtr);
+      malloc.free(decodePtr);
+      malloc.free(scanPtr);
+      malloc.free(compressPtr);
+      malloc.free(pngPtr);
+      malloc.free(layersPtr);
     }
   }
 
@@ -715,6 +825,9 @@ class NativeLayerBatchProcess {
       _setBatchThreads = _lib!.lookupFunction<
           _NativeSetProcessBatchThreads,
           _DartSetProcessBatchThreads>('set_process_layers_batch_threads');
+      _setBatchAnalytics = _lib!.lookupFunction<
+          _NativeSetProcessBatchAnalytics,
+          _DartSetProcessBatchAnalytics>('set_process_layers_batch_analytics');
         _getLastBackend = _lib!.lookupFunction<
           _NativeGetProcessLastBackend,
           _DartGetProcessLastBackend>('process_layers_last_backend');
@@ -730,6 +843,12 @@ class NativeLayerBatchProcess {
           _getLastCudaError = _lib!.lookupFunction<
             _NativeGetProcessLastCudaError,
             _DartGetProcessLastCudaError>('process_layers_last_cuda_error');
+        _getLastThreadCount = _lib!.lookupFunction<
+          _NativeGetProcessLastThreadCount,
+          _DartGetProcessLastThreadCount>('process_layers_last_thread_count');
+        _getLastThreadStats = _lib!.lookupFunction<
+          _NativeGetProcessLastThreadStats,
+          _DartGetProcessLastThreadStats>('process_layers_last_thread_stats');
       _freeBuffer = _lib!
           .lookupFunction<_NativeFreeBuffer, _DartFreeBuffer>('free_native_buffer');
       _freeIntBuffer = _lib!.lookupFunction<
@@ -742,8 +861,8 @@ class NativeLayerBatchProcess {
       // --- Phased pipeline + CUDA info (optional, may not be linked) ---
       try {
         _getLastGpuBatchOk = _lib!.lookupFunction<
-            ffi.Int32 Function(), int Function()>(
-            'process_layers_last_gpu_batch_ok');
+            _NativeGetProcessLastGpuBatchOk,
+            _DartGetProcessLastGpuBatchOk>('process_layers_last_gpu_batch_ok');
         _processBatchPhased = _lib!.lookupFunction<
             _NativeProcessLayersBatchPhased,
             _DartProcessLayersBatchPhased>('process_layers_batch_phased');
@@ -752,25 +871,23 @@ class NativeLayerBatchProcess {
         _processBatchPhased = null;
       }
 
-      try {
+        try {
         _cudaInit = _lib!.lookupFunction<
-            ffi.Int32 Function(), int Function()>(
-            'gpu_cuda_info_init');
+          _NativeGpuCudaInit, _DartGpuCudaInit>('gpu_cuda_info_init');
         _cudaDeviceName = _lib!.lookupFunction<
-            ffi.Pointer<Utf8> Function(), ffi.Pointer<Utf8> Function()>(
-            'gpu_cuda_info_device_name');
+          _NativeGpuCudaDeviceName,
+          _DartGpuCudaDeviceName>('gpu_cuda_info_device_name');
         _cudaVram = _lib!.lookupFunction<
-            ffi.Int64 Function(), int Function()>(
-            'gpu_cuda_info_vram_bytes');
+          _NativeGpuCudaVram, _DartGpuCudaVram>('gpu_cuda_info_vram_bytes');
         _cudaHasTensorCores = _lib!.lookupFunction<
-            ffi.Int32 Function(), int Function()>(
-            'gpu_cuda_info_has_tensor_cores');
+          _NativeGpuCudaI32,
+          _DartGpuCudaI32>('gpu_cuda_info_has_tensor_cores');
         _cudaComputeCap = _lib!.lookupFunction<
-            ffi.Int32 Function(), int Function()>(
-            'gpu_cuda_info_compute_capability');
+          _NativeGpuCudaI32,
+          _DartGpuCudaI32>('gpu_cuda_info_compute_capability');
         _cudaMpCount = _lib!.lookupFunction<
-            ffi.Int32 Function(), int Function()>(
-            'gpu_cuda_info_multiprocessor_count');
+          _NativeGpuCudaI32,
+          _DartGpuCudaI32>('gpu_cuda_info_multiprocessor_count');
         _cudaMaxConcurrent = _lib!.lookupFunction<
             ffi.Int32 Function(ffi.Int32, ffi.Int32, ffi.Int32, ffi.Int32),
             int Function(int, int, int, int)>(
@@ -787,11 +904,14 @@ class NativeLayerBatchProcess {
     } catch (_) {
       _processBatch = null;
       _setBatchThreads = null;
+      _setBatchAnalytics = null;
       _getLastBackend = null;
       _getLastGpuAttempts = null;
       _getLastGpuSuccesses = null;
       _getLastGpuFallbacks = null;
       _getLastCudaError = null;
+      _getLastThreadCount = null;
+      _getLastThreadStats = null;
       _freeBuffer = null;
       _freeIntBuffer = null;
       _freeAreaBuffer = null;

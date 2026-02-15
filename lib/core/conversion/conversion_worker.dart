@@ -46,6 +46,105 @@ class WorkerBenchmarkUpdate {
   const WorkerBenchmarkUpdate(this.key, this.entry);
 }
 
+/// Analytics report for diagnostics (per-worker timings + stage totals).
+class WorkerAnalyticsUpdate {
+  final Map<String, dynamic> data;
+  const WorkerAnalyticsUpdate(this.data);
+}
+
+class _ThreadStat {
+  int layers = 0;
+  int totalNs = 0;
+  int decodeNs = 0;
+  int scanlineNs = 0;
+  int compressNs = 0;
+  int pngNs = 0;
+
+  void add(NativeThreadStats s) {
+    layers += s.layers;
+    totalNs += s.totalNs;
+    decodeNs += s.decodeNs;
+    scanlineNs += s.scanlineNs;
+    compressNs += s.compressNs;
+    pngNs += s.pngNs;
+  }
+
+  Map<String, dynamic> toJson(int index) => {
+        'index': index,
+        'layers': layers,
+        'totalNs': totalNs,
+        'decodeNs': decodeNs,
+        'scanlineNs': scanlineNs,
+        'compressNs': compressNs,
+        'pngNs': pngNs,
+      };
+}
+
+class _AnalyticsCollector {
+  final bool enabled;
+  final Map<String, int> _stageNs = {};
+  final List<_ThreadStat> _threads = [];
+
+  _AnalyticsCollector(this.enabled);
+
+  void addStage(String name, Duration duration) {
+    if (!enabled) return;
+    final ns = duration.inMicroseconds * 1000;
+    _stageNs[name] = (_stageNs[name] ?? 0) + ns;
+  }
+
+  void addNativeStats(List<NativeThreadStats> stats) {
+    if (!enabled || stats.isEmpty) return;
+    if (_threads.length < stats.length) {
+      for (int i = _threads.length; i < stats.length; i++) {
+        _threads.add(_ThreadStat());
+      }
+    }
+    for (int i = 0; i < stats.length; i++) {
+      _threads[i].add(stats[i]);
+    }
+  }
+
+  Map<String, dynamic> toMap({
+    required int cpuCores,
+    required int workers,
+    required String processingEngine,
+    required bool gpuActive,
+    required int gpuAttempts,
+    required int gpuSuccesses,
+    required int gpuFallbacks,
+  }) {
+    final nativeTotals = <String, int>{
+      'decode': 0,
+      'scanline': 0,
+      'compress': 0,
+      'png': 0,
+    };
+
+    for (final t in _threads) {
+      nativeTotals['decode'] = (nativeTotals['decode'] ?? 0) + t.decodeNs;
+      nativeTotals['scanline'] = (nativeTotals['scanline'] ?? 0) + t.scanlineNs;
+      nativeTotals['compress'] = (nativeTotals['compress'] ?? 0) + t.compressNs;
+      nativeTotals['png'] = (nativeTotals['png'] ?? 0) + t.pngNs;
+    }
+
+    return {
+      'cpuCores': cpuCores,
+      'workers': workers,
+      'processingEngine': processingEngine,
+      'gpuActive': gpuActive,
+      'gpuAttempts': gpuAttempts,
+      'gpuSuccesses': gpuSuccesses,
+      'gpuFallbacks': gpuFallbacks,
+      'stagesNs': _stageNs,
+      'nativeStagesNs': nativeTotals,
+      'threadStats': [
+        for (int i = 0; i < _threads.length; i++) _threads[i].toJson(i)
+      ],
+    };
+  }
+}
+
 // ── Request object sent to the worker ───────────────────────
 
 class ConversionWorkerRequest {
@@ -86,6 +185,13 @@ Future<void> conversionWorkerEntry(ConversionWorkerRequest req) async {
   final port = req.sendPort;
   final sw = Stopwatch()..start();
   final settings = req.postProcessingSettings;
+  final analyticsEnabled = _settingBool(
+    settings,
+    'analyticsMode',
+    envKey: 'VOXELSHIFT_ANALYTICS',
+    defaultValue: false,
+  );
+  final analytics = _AnalyticsCollector(analyticsEnabled);
 
   void log(String msg) => port.send(WorkerLog(msg));
   DateTime lastReport = DateTime.now();
@@ -112,7 +218,10 @@ Future<void> conversionWorkerEntry(ConversionWorkerRequest req) async {
     log('Opening ${_fileName(req.ctbPath)}...');
     progress(0, 1, 'Opening CTB file...', force: true);
 
+    final openSw = Stopwatch()..start();
     final parser = await CtbParser.open(req.ctbPath);
+    openSw.stop();
+    analytics.addStage('open', openSw.elapsed);
 
     try {
       Uint8List? thumbnail;
@@ -241,23 +350,26 @@ Future<void> conversionWorkerEntry(ConversionWorkerRequest req) async {
           info.layerCount <= 200;
 
       final rawLayers = <Uint8List>[];
+      final readSw = Stopwatch();
+      Duration readStreamingTime = Duration.zero;
       if (shouldPreload) {
         log('Reading raw layer data (preload)...');
         progress(0, info.layerCount, 'Reading layers...', force: true);
+        readSw.start();
         for (int i = 0; i < info.layerCount; i++) {
           rawLayers.add(await parser.readRawLayerData(i));
           progress(i + 1, info.layerCount, 'Reading layers...');
         }
+        readSw.stop();
+        analytics.addStage('read', readSw.elapsed);
       } else {
         log('Reading raw layer data on the fly (streaming)...');
         progress(0, info.layerCount, 'Reading layers...', force: true);
       }
 
       final nativeBatch = NativeLayerBatchProcess.instance;
-      final outWidth = targetProfile.pngOutputWidth ??
-          (targetProfile.board == BoardType.rgb8Bit
-              ? (info.resolutionX ~/ 3)
-              : (info.resolutionX ~/ 2));
+      nativeBatch.setAnalyticsEnabled(analyticsEnabled);
+        final outWidth = targetProfile.pngOutputWidth;
       final outChannels = targetProfile.board == BoardType.rgb8Bit ? 3 : 1;
 
       final fastMode = _settingBool(
@@ -719,9 +831,15 @@ Future<void> conversionWorkerEntry(ConversionWorkerRequest req) async {
             start < info.layerCount;
             start += phasedChunkSize) {
           final end = math.min(start + phasedChunkSize, info.layerCount);
-          final chunk = shouldPreload
-              ? rawLayers.sublist(start, end)
-              : await _readRawLayerRange(parser, start, end);
+          late final List<Uint8List> chunk;
+          if (shouldPreload) {
+            chunk = rawLayers.sublist(start, end);
+          } else {
+            final chunkReadSw = Stopwatch()..start();
+            chunk = await _readRawLayerRange(parser, start, end);
+            chunkReadSw.stop();
+            readStreamingTime += chunkReadSw.elapsed;
+          }
 
           nativeBatch.setBatchThreads(phasedThreads);
           final chunkResults = nativeBatch.processBatchPhased(
@@ -808,9 +926,15 @@ Future<void> conversionWorkerEntry(ConversionWorkerRequest req) async {
         int nextChunkLog = chunkLogStep;
         for (int start = 0; start < info.layerCount; start += nativeChunkSize) {
           final end = math.min(start + nativeChunkSize, info.layerCount);
-          final chunk = shouldPreload
-              ? rawLayers.sublist(start, end)
-              : await _readRawLayerRange(parser, start, end);
+          late final List<Uint8List> chunk;
+          if (shouldPreload) {
+            chunk = rawLayers.sublist(start, end);
+          } else {
+            final chunkReadSw = Stopwatch()..start();
+            chunk = await _readRawLayerRange(parser, start, end);
+            chunkReadSw.stop();
+            readStreamingTime += chunkReadSw.elapsed;
+          }
 
           nativeBatch.setBatchThreads(processingMaxConcurrency);
           final chunkResults = nativeBatch.processBatch(
@@ -836,6 +960,9 @@ Future<void> conversionWorkerEntry(ConversionWorkerRequest req) async {
           processingGpuAttempts += nativeBatch.lastGpuAttempts;
           processingGpuSuccesses += nativeBatch.lastGpuSuccesses;
           processingGpuFallbacks += nativeBatch.lastGpuFallbacks;
+          if (analyticsEnabled) {
+            analytics.addNativeStats(nativeBatch.getLastThreadStats());
+          }
 
           usedNativeBatch = true;
           for (final r in chunkResults) {
@@ -862,9 +989,16 @@ Future<void> conversionWorkerEntry(ConversionWorkerRequest req) async {
         processingEngine = 'CPU Dart';
         log('Processing engine fallback: $processingEngine');
 
-        final rawLayersForFallback = shouldPreload
-            ? rawLayers
-            : await _readRawLayerRange(parser, 0, info.layerCount);
+        late final List<Uint8List> rawLayersForFallback;
+        if (shouldPreload) {
+          rawLayersForFallback = rawLayers;
+        } else {
+          final chunkReadSw = Stopwatch()..start();
+          rawLayersForFallback =
+              await _readRawLayerRange(parser, 0, info.layerCount);
+          chunkReadSw.stop();
+          readStreamingTime += chunkReadSw.elapsed;
+        }
 
         final tasks = <LayerTaskParams>[];
         for (int i = 0; i < info.layerCount; i++) {
@@ -913,6 +1047,10 @@ Future<void> conversionWorkerEntry(ConversionWorkerRequest req) async {
       }
 
       processingPhaseSw.stop();
+      analytics.addStage('process', processingPhaseSw.elapsed);
+      if (!shouldPreload && readStreamingTime.inMicroseconds > 0) {
+        analytics.addStage('read', readStreamingTime);
+      }
       log('Processing phase finished in '
           '${(processingPhaseSw.elapsedMilliseconds / 1000).toStringAsFixed(2)}s '
           '[$processingEngine].');
@@ -993,6 +1131,7 @@ Future<void> conversionWorkerEntry(ConversionWorkerRequest req) async {
           layerImages[i] = recompressed[i];
         }
         recompressSw.stop();
+        analytics.addStage('recompress', recompressSw.elapsed);
         log('Recompression phase finished in '
             '${(recompressSw.elapsedMilliseconds / 1000).toStringAsFixed(2)}s.');
       } else {
@@ -1037,6 +1176,7 @@ Future<void> conversionWorkerEntry(ConversionWorkerRequest req) async {
       log('Writing ${_fileName(outputPath)}...');
 
       final writer = NanoDlpFileWriter();
+      final writeSw = Stopwatch()..start();
       await writer.writeAsync(
         outputPath,
         layerImages,
@@ -1050,6 +1190,8 @@ Future<void> conversionWorkerEntry(ConversionWorkerRequest req) async {
           );
         },
       );
+      writeSw.stop();
+      analytics.addStage('write', writeSw.elapsed);
 
       sw.stop();
       final fileSize = await File(outputPath).length();
@@ -1057,6 +1199,18 @@ Future<void> conversionWorkerEntry(ConversionWorkerRequest req) async {
       log('Conversion complete: $outputPath '
           '(${(fileSize / 1024 / 1024).toStringAsFixed(1)} MB) '
           'in ${(sw.elapsedMilliseconds / 1000).toStringAsFixed(1)}s');
+
+      if (analyticsEnabled) {
+        port.send(WorkerAnalyticsUpdate(analytics.toMap(
+          cpuCores: Platform.numberOfProcessors,
+          workers: processingMaxConcurrency,
+          processingEngine: processingEngine,
+          gpuActive: gpuAccelActive,
+          gpuAttempts: processingGpuAttempts,
+          gpuSuccesses: processingGpuSuccesses,
+          gpuFallbacks: processingGpuFallbacks,
+        )));
+      }
 
       port.send(WorkerDone(ConversionResult(
         success: true,

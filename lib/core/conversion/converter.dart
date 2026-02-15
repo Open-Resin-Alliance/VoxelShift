@@ -1,10 +1,12 @@
 import 'dart:async';
 import 'dart:isolate';
 import 'dart:typed_data';
+import 'dart:io';
 
 import '../models/models.dart';
 import '../network/app_settings.dart';
 import 'conversion_worker.dart';
+import 'conversion_analytics.dart';
 import 'ctb_parser.dart';
 import 'thumbnail_processor.dart';
 
@@ -26,6 +28,7 @@ class ConversionProgress {
 /// ever crosses the isolate boundary, so the UI stays perfectly smooth.
 class CtbToNanoDlpConverter {
   final List<void Function(String)> _logListeners = [];
+  static Future<String?>? _cpuNameFuture;
 
   void addLogListener(void Function(String) listener) =>
       _logListeners.add(listener);
@@ -64,6 +67,7 @@ class CtbToNanoDlpConverter {
     options ??= ConversionOptions();
     final receivePort = ReceivePort();
     final settings = await AppSettings.load();
+    AnalyticsBus.enabled.value = settings.postProcessing.analyticsMode;
     final completer = Completer<ConversionResult>();
 
     receivePort.listen((message) {
@@ -77,6 +81,32 @@ class CtbToNanoDlpConverter {
         settings.benchmarkCache[message.key] =
             BenchmarkCacheEntry.fromJson(Map<String, dynamic>.from(message.entry));
         settings.save();
+      } else if (message is WorkerAnalyticsUpdate) {
+        final report = ConversionAnalytics.fromWorkerMap(
+          Map<String, dynamic>.from(message.data),
+        );
+        AnalyticsBus.update(report);
+        
+        // Auto-optimize worker count after first run (ONE-TIME only)
+        // Once cpuHostWorkers is set, this won't run again - prevents
+        // continuously optimizing down to fewer workers
+        if (settings.postProcessing.cpuHostWorkers == null) {
+          final optimal = report.calculateOptimalWorkerCount();
+          if (optimal != report.workers && optimal > 0) {
+            settings.postProcessing.cpuHostWorkers = optimal;
+            settings.save();
+            _log('Auto-optimized worker count: ${report.workers} → $optimal (future runs will use $optimal)');
+          }
+        }
+        
+        _cpuNameFuture ??= _readCpuName();
+        _cpuNameFuture?.then((name) {
+          if (name == null || name.isEmpty) return;
+          final current = AnalyticsBus.latest.value;
+          if (current == null) return;
+          if (current.capturedAt != report.capturedAt) return;
+          AnalyticsBus.update(current.withCpuName(name));
+        });
       } else if (message is WorkerDone) {
         completer.complete(message.result);
         receivePort.close();
@@ -106,5 +136,41 @@ class CtbToNanoDlpConverter {
     for (final listener in _logListeners) {
       listener(message);
     }
+  }
+
+  static Future<String?> _readCpuName() async {
+    try {
+      if (Platform.isMacOS) {
+        final result = await Process.run(
+          'sysctl',
+          ['-n', 'machdep.cpu.brand_string'],
+        );
+        if (result.exitCode == 0) {
+          final name = (result.stdout as String).trim();
+          if (name.isNotEmpty) return name;
+        }
+      } else if (Platform.isWindows) {
+        final result = await Process.run('wmic', ['cpu', 'get', 'name']);
+        if (result.exitCode == 0) {
+          final lines = (result.stdout as String)
+              .split(RegExp(r'\r?\n'))
+              .map((l) => l.trim())
+              .where((l) => l.isNotEmpty)
+              .toList();
+          if (lines.length >= 2) return lines[1];
+        }
+      } else if (Platform.isLinux) {
+        final cpuInfo = await File('/proc/cpuinfo').readAsString();
+        for (final line in cpuInfo.split('\n')) {
+          if (line.toLowerCase().startsWith('model name')) {
+            final parts = line.split(':');
+            if (parts.length > 1) return parts[1].trim();
+          }
+        }
+      }
+    } catch (_) {
+      // Ignore and fall through.
+    }
+    return null;
   }
 }

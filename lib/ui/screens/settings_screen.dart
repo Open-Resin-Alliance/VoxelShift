@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/network/app_settings.dart';
+import '../../core/conversion/conversion_analytics.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -33,6 +34,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _load() async {
     final settings = await AppSettings.load();
+    AnalyticsBus.enabled.value = settings.postProcessing.analyticsMode;
     _applyControllers(settings.postProcessing);
     setState(() {
       _settings = settings;
@@ -72,6 +74,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       fastMode: current.fastMode,
       usePhased: current.usePhased,
       recompressMode: current.recompressMode,
+      analyticsMode: current.analyticsMode,
       processPngLevel: current.processPngLevel,
       gpuHostWorkers: current.gpuHostWorkers,
       cpuHostWorkers: current.cpuHostWorkers,
@@ -165,6 +168,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
               subtitle: 'Opt-in CPU+GPU phased processing.',
               value: pp.usePhased,
               onChanged: (v) => _updatePostProcessing((p) => p..usePhased = v),
+            ),
+          ],
+        ),
+        _section(
+          title: 'Diagnostics',
+          subtitle: 'Performance analytics and tuning hints.',
+          icon: Icons.query_stats,
+          children: [
+            _switchTile(
+              title: 'Analytics overlay',
+              subtitle: 'Show per-worker timings and auto-diagnosis.',
+              value: pp.analyticsMode,
+              onChanged: (v) {
+                AnalyticsBus.enabled.value = v;
+                _updatePostProcessing((p) => p..analyticsMode = v);
+              },
             ),
           ],
         ),

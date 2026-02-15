@@ -22,9 +22,40 @@ class NanoDlpScanner {
   /// Scan all local subnets for NanoDLP instances.
   Future<List<NanoDlpDevice>> scan({
     List<int>? ports,
+    String? ipOverride,
     void Function(int scanned, int total)? onProgress,
   }) async {
     ports ??= defaultPorts;
+    final forcedIp = ipOverride?.trim();
+    if (forcedIp != null && forcedIp.isNotEmpty) {
+      final found = <NanoDlpDevice>[];
+      final probeCandidates = <(String, int)>[];
+      for (final port in ports) {
+        probeCandidates.add((forcedIp, port));
+      }
+
+      _log('Scanning forced IP $forcedIp across ${ports.length} port(s) '
+          '(${probeCandidates.length} total probes)');
+
+      int scanned = 0;
+      for (final candidate in probeCandidates) {
+        final (ip, port) = candidate;
+        final device = await probe(ip, port);
+        if (device != null) {
+          found.add(device);
+          for (final listener in _deviceFoundListeners) {
+            listener(device);
+          }
+          _log('  Found NanoDLP at $ip:$port — ${device.displayName}');
+        }
+        scanned++;
+        onProgress?.call(scanned, probeCandidates.length);
+      }
+
+      _log('Scan complete. ${found.length} device(s) found.');
+      return found;
+    }
+
     final subnets = await _getLocalSubnets();
 
     _log('Found ${subnets.length} network interface(s)');
@@ -46,6 +77,12 @@ class NanoDlpScanner {
 
     _log('Scanning ${ipCandidates.length} IPs across ${ports.length} port(s) '
         '(${probeCandidates.length} total probes)');
+
+    if (probeCandidates.isEmpty) {
+      _log('No IPv4 subnets detected. Connect to a network with IPv4 enabled.');
+      onProgress?.call(0, 0);
+      return [];
+    }
 
     final found = <NanoDlpDevice>[];
     final foundIps = <String>{};
@@ -190,7 +227,11 @@ class NanoDlpScanner {
   Future<List<String>> _getLocalSubnets() async {
     final subnets = <String>[];
     try {
-      final interfaces = await NetworkInterface.list();
+      final interfaces = await NetworkInterface.list(
+        includeLoopback: false,
+        includeLinkLocal: true,
+        type: InternetAddressType.IPv4,
+      );
       for (final iface in interfaces) {
         for (final addr in iface.addresses) {
           if (addr.type == InternetAddressType.IPv4 && !addr.isLoopback) {

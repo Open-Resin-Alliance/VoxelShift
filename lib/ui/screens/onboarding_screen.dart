@@ -21,6 +21,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   final _scanner = NanoDlpScanner();
   final _devices = <NanoDlpDevice>[];
   final _logs = <String>[];
+  final _manualIpController = TextEditingController();
 
   bool _isScanning = false;
   bool _isFetchingDetails = false;
@@ -35,6 +36,12 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     _scanner.addDeviceFoundListener(_onDeviceFound);
     // Auto-start scan on entry
     Future.microtask(_startScan);
+  }
+
+  @override
+  void dispose() {
+    _manualIpController.dispose();
+    super.dispose();
   }
 
   void _onDeviceFound(NanoDlpDevice device) {
@@ -57,8 +64,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       _scanTotal = 1;
     });
 
+    final manualIp = _manualIpController.text.trim();
     try {
       await _scanner.scan(
+        ipOverride: manualIp.isNotEmpty ? manualIp : null,
         onProgress: (scanned, total) {
           if (!mounted) return;
           setState(() {
@@ -150,6 +159,54 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   ),
                   const SizedBox(height: 20),
 
+                  // Manual IP
+                  Text(
+                    'Scan a specific IP (optional)',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.white.withValues(alpha: 0.6),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: _manualIpController,
+                    keyboardType: TextInputType.number,
+                    textInputAction: TextInputAction.done,
+                    style: const TextStyle(color: Colors.white),
+                    decoration: InputDecoration(
+                      hintText: 'e.g. 192.168.1.42',
+                      hintStyle: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.35),
+                      ),
+                      filled: true,
+                      fillColor: Colors.white.withValues(alpha: 0.04),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: BorderSide(
+                          color: Colors.white.withValues(alpha: 0.08),
+                        ),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: BorderSide(
+                          color: Colors.white.withValues(alpha: 0.08),
+                        ),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: BorderSide(
+                          color: Colors.cyan.withValues(alpha: 0.4),
+                        ),
+                      ),
+                      prefixIcon: Icon(
+                        Icons.router,
+                        color: Colors.cyan.withValues(alpha: 0.6),
+                        size: 18,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+
                   // Scan progress
                   if (_isScanning) ...[
                     ClipRRect(
@@ -230,6 +287,63 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                     ),
                     const SizedBox(height: 20),
                     ..._devices.map((device) => _buildDeviceCard(device)),
+                  ] else if (_scanTotal == 0) ...[
+                    Container(
+                      padding: const EdgeInsets.all(18),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [
+                            Colors.red.withValues(alpha: 0.12),
+                            Colors.deepOrange.withValues(alpha: 0.08),
+                          ],
+                        ),
+                        border: Border.all(
+                          color: Colors.red.withValues(alpha: 0.35),
+                        ),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: Colors.red.withValues(alpha: 0.2),
+                              shape: BoxShape.circle,
+                            ),
+                            child: Icon(
+                              Icons.wifi_off,
+                              color: Colors.red.shade300,
+                              size: 24,
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'No IPv4 network detected',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  'Connect to Wi‑Fi or Ethernet with IPv4 enabled, then rescan.',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.red.shade200
+                                        .withValues(alpha: 0.8),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ] else ...[
                     Container(
                       padding: const EdgeInsets.all(18),

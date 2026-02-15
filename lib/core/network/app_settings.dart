@@ -10,6 +10,7 @@ class PostProcessingSettings {
   bool autotune;
   bool fastMode;
   bool usePhased;
+  bool analyticsMode;
   String recompressMode;
   int? processPngLevel;
   int? gpuHostWorkers;
@@ -22,6 +23,7 @@ class PostProcessingSettings {
     this.autotune = true,
     this.fastMode = false,
     this.usePhased = false,
+    this.analyticsMode = false,
     this.recompressMode = 'adaptive',
     this.processPngLevel,
     this.gpuHostWorkers,
@@ -36,6 +38,7 @@ class PostProcessingSettings {
       autotune: (json['autotune'] as bool?) ?? true,
       fastMode: (json['fastMode'] as bool?) ?? false,
       usePhased: (json['usePhased'] as bool?) ?? false,
+      analyticsMode: (json['analyticsMode'] as bool?) ?? false,
       recompressMode: (json['recompressMode'] as String?) ?? 'adaptive',
       processPngLevel: json['processPngLevel'] as int?,
       gpuHostWorkers: json['gpuHostWorkers'] as int?,
@@ -51,6 +54,7 @@ class PostProcessingSettings {
       'autotune': autotune,
       'fastMode': fastMode,
       'usePhased': usePhased,
+      'analyticsMode': analyticsMode,
       'recompressMode': recompressMode,
       'processPngLevel': processPngLevel,
       'gpuHostWorkers': gpuHostWorkers,
