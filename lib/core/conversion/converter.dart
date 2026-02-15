@@ -66,15 +66,16 @@ class CtbToNanoDlpConverter {
       final totalLayers = parser.layerCount;
       if (totalLayers == 0) return corruptLayers;
       
-      // Sample layers: first, last, middle, and evenly spaced
+      // Sample layers: first, middle, and evenly spaced
+      // Skip last layer - some slicers add empty padding layers at the end which is okay
       final samplesToCheck = <int>{};
       samplesToCheck.add(0); // First layer
-      if (totalLayers > 1) samplesToCheck.add(totalLayers - 1); // Last layer
       if (totalLayers > 2) samplesToCheck.add(totalLayers ~/ 2); // Middle
       
-      // Add evenly spaced samples (up to 10 total)
+      // Add evenly spaced samples (up to 10 total), but don't include last
       final step = (totalLayers / 10).ceil();
-      for (var i = 0; i < totalLayers && samplesToCheck.length < 10; i += step) {
+      final maxLayer = totalLayers - 2; // Exclude last layer
+      for (var i = 0; i <= maxLayer && samplesToCheck.length < 10; i += step) {
         samplesToCheck.add(i);
       }
       
