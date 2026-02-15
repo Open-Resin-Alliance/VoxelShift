@@ -113,7 +113,9 @@ class _PostProcessorScreenState extends State<PostProcessorScreen> {
   }
 
   void _startConversionUiTicker() {
-    _conversionUiTicker ??= Timer.periodic(const Duration(milliseconds: 220), (_) {
+    _conversionUiTicker ??= Timer.periodic(const Duration(milliseconds: 220), (
+      _,
+    ) {
       if (!mounted) return;
       if (_phase != _Phase.converting) {
         _stopConversionUiTicker();
@@ -150,7 +152,8 @@ class _PostProcessorScreenState extends State<PostProcessorScreen> {
         _phase == _Phase.converting && (_conversionProgress?.workers ?? 0) >= 9;
     final minIntervalMs = isHeavyConverting ? 500 : 250;
     final minDelta = isHeavyConverting ? 0.04 : 0.02;
-    if (elapsed < minIntervalMs && (nextValue - _convertProgress).abs() < minDelta) {
+    if (elapsed < minIntervalMs &&
+        (nextValue - _convertProgress).abs() < minDelta) {
       return false;
     }
     _lastProgressUpdate = now;
@@ -221,23 +224,28 @@ class _PostProcessorScreenState extends State<PostProcessorScreen> {
                         decoration: BoxDecoration(
                           gradient: LinearGradient(
                             colors: [
-                              Theme.of(context).colorScheme.primary.withValues(alpha: 0.25),
-                              Theme.of(context).colorScheme.primary.withValues(alpha: 0.15),
+                              Theme.of(
+                                context,
+                              ).colorScheme.primary.withValues(alpha: 0.25),
+                              Theme.of(
+                                context,
+                              ).colorScheme.primary.withValues(alpha: 0.15),
                             ],
                             begin: Alignment.topLeft,
                             end: Alignment.bottomRight,
                           ),
                           borderRadius: BorderRadius.circular(14),
                           border: Border.all(
-                            color: Theme.of(context)
-                                .colorScheme
-                                .primary
-                                .withValues(alpha: 0.4),
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.primary.withValues(alpha: 0.4),
                             width: 1.5,
                           ),
                           boxShadow: [
                             BoxShadow(
-                              color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.2),
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.primary.withValues(alpha: 0.2),
                               blurRadius: 12,
                               spreadRadius: 1,
                             ),
@@ -353,7 +361,9 @@ class _PostProcessorScreenState extends State<PostProcessorScreen> {
                                         width: 8,
                                         height: 8,
                                         decoration: BoxDecoration(
-                                          color: Theme.of(ctx).colorScheme.primary,
+                                          color: Theme.of(
+                                            ctx,
+                                          ).colorScheme.primary,
                                           shape: BoxShape.circle,
                                         ),
                                       ),
@@ -378,7 +388,9 @@ class _PostProcessorScreenState extends State<PostProcessorScreen> {
                         Container(
                           padding: const EdgeInsets.all(14),
                           decoration: BoxDecoration(
-                            color: const Color(0xFF0F172A).withValues(alpha: 0.5),
+                            color: const Color(
+                              0xFF0F172A,
+                            ).withValues(alpha: 0.5),
                             borderRadius: BorderRadius.circular(12),
                             border: Border.all(
                               color: Colors.white.withValues(alpha: 0.08),
@@ -399,11 +411,15 @@ class _PostProcessorScreenState extends State<PostProcessorScreen> {
                               const SizedBox(height: 10),
                               InkWell(
                                 onTap: () {
-                                  setDialogState(() => _useAsDefault = !_useAsDefault);
+                                  setDialogState(
+                                    () => _useAsDefault = !_useAsDefault,
+                                  );
                                 },
                                 borderRadius: BorderRadius.circular(8),
                                 child: Padding(
-                                  padding: const EdgeInsets.symmetric(vertical: 4),
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 4,
+                                  ),
                                   child: Row(
                                     children: [
                                       SizedBox(
@@ -411,15 +427,19 @@ class _PostProcessorScreenState extends State<PostProcessorScreen> {
                                         height: 20,
                                         child: Checkbox(
                                           value: _useAsDefault,
-                                          onChanged: (val) =>
-                                              setDialogState(() => _useAsDefault = val ?? false),
-                                          activeColor: Theme.of(ctx).colorScheme.primary,
+                                          onChanged: (val) => setDialogState(
+                                            () => _useAsDefault = val ?? false,
+                                          ),
+                                          activeColor: Theme.of(
+                                            ctx,
+                                          ).colorScheme.primary,
                                         ),
                                       ),
                                       const SizedBox(width: 10),
                                       Expanded(
                                         child: Column(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
                                           children: [
                                             const Text(
                                               'Use as default',
@@ -432,7 +452,9 @@ class _PostProcessorScreenState extends State<PostProcessorScreen> {
                                               'Remember this choice for future conversions',
                                               style: TextStyle(
                                                 fontSize: 11,
-                                                color: Colors.white.withValues(alpha: 0.5),
+                                                color: Colors.white.withValues(
+                                                  alpha: 0.5,
+                                                ),
                                               ),
                                             ),
                                           ],
@@ -445,11 +467,15 @@ class _PostProcessorScreenState extends State<PostProcessorScreen> {
                               const SizedBox(height: 12),
                               InkWell(
                                 onTap: () {
-                                  setDialogState(() => _autoStartPrint = !_autoStartPrint);
+                                  setDialogState(
+                                    () => _autoStartPrint = !_autoStartPrint,
+                                  );
                                 },
                                 borderRadius: BorderRadius.circular(8),
                                 child: Padding(
-                                  padding: const EdgeInsets.symmetric(vertical: 4),
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 4,
+                                  ),
                                   child: Row(
                                     children: [
                                       SizedBox(
@@ -457,15 +483,20 @@ class _PostProcessorScreenState extends State<PostProcessorScreen> {
                                         height: 20,
                                         child: Checkbox(
                                           value: _autoStartPrint,
-                                          onChanged: (val) =>
-                                              setDialogState(() => _autoStartPrint = val ?? false),
-                                          activeColor: Theme.of(ctx).colorScheme.primary,
+                                          onChanged: (val) => setDialogState(
+                                            () =>
+                                                _autoStartPrint = val ?? false,
+                                          ),
+                                          activeColor: Theme.of(
+                                            ctx,
+                                          ).colorScheme.primary,
                                         ),
                                       ),
                                       const SizedBox(width: 10),
                                       Expanded(
                                         child: Column(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
                                           children: [
                                             const Text(
                                               'Auto-start print',
@@ -478,7 +509,9 @@ class _PostProcessorScreenState extends State<PostProcessorScreen> {
                                               'Begin printing immediately after upload',
                                               style: TextStyle(
                                                 fontSize: 11,
-                                                color: Colors.white.withValues(alpha: 0.5),
+                                                color: Colors.white.withValues(
+                                                  alpha: 0.5,
+                                                ),
                                               ),
                                             ),
                                           ],
@@ -519,7 +552,8 @@ class _PostProcessorScreenState extends State<PostProcessorScreen> {
                                   // Save as default if checkbox is set
                                   if (_useAsDefault && _selectedResin != null) {
                                     final settings = await AppSettings.load();
-                                    settings.defaultMaterialProfileId = _selectedResin!.profileId;
+                                    settings.defaultMaterialProfileId =
+                                        _selectedResin!.profileId;
                                     await settings.save();
                                   }
                                   setState(() => _runInBackground = true);
@@ -572,7 +606,10 @@ class _PostProcessorScreenState extends State<PostProcessorScreen> {
           decoration: BoxDecoration(
             color: const Color(0xFF1E293B),
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.12), width: 1),
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.12),
+              width: 1,
+            ),
           ),
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 520, maxHeight: 520),
@@ -581,12 +618,18 @@ class _PostProcessorScreenState extends State<PostProcessorScreen> {
               children: [
                 Row(
                   children: [
-                    Icon(Icons.settings, color: Theme.of(context).colorScheme.primary),
+                    Icon(
+                      Icons.settings,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
                     const SizedBox(width: 8),
                     const Expanded(
                       child: Text(
                         'Post-processing Settings',
-                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                     ),
                     IconButton(
@@ -599,9 +642,7 @@ class _PostProcessorScreenState extends State<PostProcessorScreen> {
                 const SizedBox(height: 8),
                 const Divider(height: 1),
                 const SizedBox(height: 8),
-                const Expanded(
-                  child: SettingsScreen(),
-                ),
+                const Expanded(child: SettingsScreen()),
               ],
             ),
           ),
@@ -612,8 +653,365 @@ class _PostProcessorScreenState extends State<PostProcessorScreen> {
 
   Future<void> _loadCachedDevices() async {
     await _cache.load();
-    if (mounted) {
-    }
+    if (mounted) {}
+  }
+
+  String? _getResolutionLabel(int resolutionX) {
+    if (resolutionX >= 14500 && resolutionX <= 15400) return '16K';
+    if (resolutionX >= 11300 && resolutionX <= 11700) return '12K';
+    if (resolutionX >= 7500 && resolutionX <= 7900) return '8K';
+    if (resolutionX >= 4800 && resolutionX <= 5200) return '4K';
+    return null;
+  }
+
+  Future<void> _showResolutionMismatchWarning(
+    String ctbLabel,
+    String deviceLabel,
+    int ctbResX,
+  ) async {
+    if (!mounted) return;
+
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+        child: Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: const EdgeInsets.all(24),
+          child: Container(
+            padding: const EdgeInsets.all(28),
+            constraints: const BoxConstraints(maxWidth: 560),
+            decoration: BoxDecoration(
+              color: const Color(0xFF1E293B).withValues(alpha: 0.95),
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.15),
+                width: 1.5,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.5),
+                  blurRadius: 32,
+                  spreadRadius: 8,
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      width: 44,
+                      height: 44,
+                      decoration: BoxDecoration(
+                        color: Colors.red.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                          color: Colors.red.withValues(alpha: 0.4),
+                          width: 1.5,
+                        ),
+                      ),
+                      child: const Icon(
+                        Icons.error_outline,
+                        color: Colors.red,
+                        size: 22,
+                      ),
+                    ),
+                    const SizedBox(width: 14),
+                    const Expanded(
+                      child: Text(
+                        'Resolution Mismatch',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'This CTB file cannot be converted for the selected printer. It will fail:',
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.9),
+                    fontSize: 13,
+                    height: 1.5,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF0F172A),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                            color: Colors.orange.withValues(alpha: 0.35),
+                            width: 1.5,
+                          ),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'CTB File',
+                              style: TextStyle(
+                                fontSize: 10,
+                                color: Colors.white.withValues(alpha: 0.5),
+                                fontWeight: FontWeight.w600,
+                                letterSpacing: 0.5,
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              ctbLabel,
+                              style: const TextStyle(
+                                fontSize: 16,
+                                color: Colors.orange,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              '$ctbResX px',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: Colors.orange.withValues(alpha: 0.6),
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF0F172A),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                            color: Colors.cyan.withValues(alpha: 0.35),
+                            width: 1.5,
+                          ),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Printer',
+                              style: TextStyle(
+                                fontSize: 10,
+                                color: Colors.white.withValues(alpha: 0.5),
+                                fontWeight: FontWeight.w600,
+                                letterSpacing: 0.5,
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              deviceLabel,
+                              style: const TextStyle(
+                                fontSize: 16,
+                                color: Colors.cyan,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              widget.activeDevice?.displayName ?? 'Unknown',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: Colors.cyan.withValues(alpha: 0.6),
+                                fontWeight: FontWeight.w500,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'To fix this, do one of:',
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.85),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                ...[
+                  'Re-slice the model for your $deviceLabel printer',
+                  'Load a different $deviceLabel CTB file',
+                  'Switch to a printer that matches this $ctbLabel file',
+                ].map(
+                  (item) => Padding(
+                    padding: const EdgeInsets.only(bottom: 6),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.only(top: 2, right: 8),
+                          child: Text(
+                            '•',
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.5),
+                              fontSize: 11,
+                            ),
+                          ),
+                        ),
+                        Expanded(
+                          child: Text(
+                            item,
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.75),
+                              fontSize: 12,
+                              height: 1.4,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: ElevatedButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 28,
+                        vertical: 12,
+                      ),
+                    ),
+                    child: const Text('Close'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showCorruptLayersWarning(List<int> corruptLayers) async {
+    if (!mounted || corruptLayers.isEmpty) return;
+
+    final preview = corruptLayers.take(10).map((i) => i + 1).toList();
+    final suffix = corruptLayers.length > 10 ? '…' : '';
+    final layerList = '${preview.join(', ')}$suffix';
+
+    await showDialog(
+      context: context,
+      builder: (ctx) => BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+        child: Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: const EdgeInsets.all(24),
+          child: Container(
+            padding: const EdgeInsets.all(28),
+            constraints: const BoxConstraints(maxWidth: 520),
+            decoration: BoxDecoration(
+              color: const Color(0xFF1E293B).withValues(alpha: 0.95),
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.15),
+                width: 1.5,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.5),
+                  blurRadius: 32,
+                  spreadRadius: 8,
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: Colors.orange.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: Colors.orange.withValues(alpha: 0.35),
+                          width: 1.5,
+                        ),
+                      ),
+                      child: const Icon(
+                        Icons.warning_amber_rounded,
+                        color: Colors.orange,
+                        size: 22,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    const Expanded(
+                      child: Text(
+                        'Possible Corrupt Layers',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'Detected ${corruptLayers.length} layer(s) that appear fully black or white. This can indicate a corrupt CTB file:',
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.85),
+                    fontSize: 13,
+                    height: 1.5,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF0F172A),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: Colors.orange.withValues(alpha: 0.3),
+                    ),
+                  ),
+                  child: Text(
+                    'Layers: $layerList',
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.8),
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: ElevatedButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    child: const Text('Continue'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   Future<void> _loadFile() async {
@@ -624,20 +1022,53 @@ class _PostProcessorScreenState extends State<PostProcessorScreen> {
         info.resolutionY,
       );
 
+      // Check for corrupt layers (warning only)
+      final corruptLayers = await _converter.checkForCorruptLayers(
+        widget.ctbFilePath,
+      );
+      if (mounted && corruptLayers.isNotEmpty) {
+        await _showCorruptLayersWarning(corruptLayers);
+      }
+
+      // Check for resolution mismatch (block conversion)
+      if (widget.activeDevice?.machineResolutionX != null) {
+        final deviceResX = widget.activeDevice!.machineResolutionX!;
+        final deviceLabel = _getResolutionLabel(deviceResX);
+        final ctbLabel = _getResolutionLabel(info.resolutionX);
+        if (deviceLabel != null &&
+            ctbLabel != null &&
+            deviceLabel != ctbLabel) {
+          if (mounted) {
+            await _showResolutionMismatchWarning(
+              ctbLabel,
+              deviceLabel,
+              info.resolutionX,
+            );
+            setState(() {
+              _errorMessage =
+                  'Resolution mismatch: $ctbLabel file on $deviceLabel printer';
+              _phase = _Phase.error;
+            });
+          }
+          return;
+        }
+      }
+
       if (!mounted) return;
 
       // Auto-select profile by active device
       PrinterProfile? selectedProfile;
       if (widget.activeDevice != null) {
         final activeLabel =
-            widget.activeDevice!.machineLcdType ?? widget.activeDevice!.machineProfileLabel;
+            widget.activeDevice!.machineLcdType ??
+            widget.activeDevice!.machineProfileLabel;
         if (activeLabel != null) {
           final lowerLabel = activeLabel.toLowerCase();
-          final is3Bit = lowerLabel.contains('3bit') ||
+          final is3Bit =
+              lowerLabel.contains('3bit') ||
               lowerLabel.contains('3-bit') ||
               lowerLabel.contains('3 bit');
-          final board =
-              is3Bit ? BoardType.twoBit3Subpixel : BoardType.rgb8Bit;
+          final board = is3Bit ? BoardType.twoBit3Subpixel : BoardType.rgb8Bit;
           selectedProfile = profiles.firstWhere(
             (p) => p.board == board,
             orElse: () => profiles.first,
@@ -654,7 +1085,7 @@ class _PostProcessorScreenState extends State<PostProcessorScreen> {
       if (widget.activeDevice != null && mounted) {
         // Load settings to check for default profile
         final settings = await AppSettings.load();
-        
+
         // Skip dialog if we have a default profile saved
         if (settings.defaultMaterialProfileId != null) {
           // Use default profile if available
@@ -664,7 +1095,7 @@ class _PostProcessorScreenState extends State<PostProcessorScreen> {
           }
           return;
         }
-        
+
         // No default profile: show material selection dialog
         if (mounted && !_backgroundDialogShown) {
           _backgroundDialogShown = true;
@@ -729,9 +1160,11 @@ class _PostProcessorScreenState extends State<PostProcessorScreen> {
               final dCount = p.current - _conversionSampleCount;
               if (dtMs >= 400 && dCount > 0) {
                 final instantRate = dCount / (dtMs / 1000.0);
-                _pendingConversionRateLayersPerSec = _pendingConversionRateLayersPerSec == null
+                _pendingConversionRateLayersPerSec =
+                    _pendingConversionRateLayersPerSec == null
                     ? instantRate
-                    : ((_pendingConversionRateLayersPerSec! * 0.65) + (instantRate * 0.35));
+                    : ((_pendingConversionRateLayersPerSec! * 0.65) +
+                          (instantRate * 0.35));
                 _conversionSampleAt = now;
                 _conversionSampleCount = p.current;
               }
@@ -858,7 +1291,8 @@ class _PostProcessorScreenState extends State<PostProcessorScreen> {
             final dtMs = now.difference(sampleAt).inMilliseconds;
             final dProgress = p - _uploadSampleProgress;
             if (dtMs >= 350 && dProgress > 0) {
-              final bytesPerSec = (dProgress * _uploadTotalBytes) / (dtMs / 1000.0);
+              final bytesPerSec =
+                  (dProgress * _uploadTotalBytes) / (dtMs / 1000.0);
               final mbPerSec = bytesPerSec / (1024 * 1024);
               _uploadRateMbPerSec = _uploadRateMbPerSec == null
                   ? mbPerSec
@@ -895,21 +1329,21 @@ class _PostProcessorScreenState extends State<PostProcessorScreen> {
 
       // Move to post-upload processing state.
       setState(() => _uploadProgress = 1.0);
-      
+
       // Wait for metadata & resolve plateId
       final plate = await client.waitForPlateReady(
         plateId: uploadResult.plateId,
         jobName: jobName,
         timeout: const Duration(minutes: 3),
         onProgress: (_) {
-           // Ignore fake progress based on timeout
-           if (mounted && !_isDeviceProcessing) {
-             setState(() {
-               _isDeviceProcessing = true;
-               _deviceProcessingStartedAt ??= DateTime.now();
-             });
-             _startDeviceProcessingTicker();
-           }
+          // Ignore fake progress based on timeout
+          if (mounted && !_isDeviceProcessing) {
+            setState(() {
+              _isDeviceProcessing = true;
+              _deviceProcessingStartedAt ??= DateTime.now();
+            });
+            _startDeviceProcessingTicker();
+          }
         },
       );
 
@@ -963,7 +1397,10 @@ class _PostProcessorScreenState extends State<PostProcessorScreen> {
             decoration: BoxDecoration(
               color: const Color(0xFF1E293B),
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.12), width: 1),
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.12),
+                width: 1,
+              ),
             ),
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 450),
@@ -976,16 +1413,14 @@ class _PostProcessorScreenState extends State<PostProcessorScreen> {
                       Container(
                         padding: const EdgeInsets.all(10),
                         decoration: BoxDecoration(
-                          color: Theme.of(context)
-                              .colorScheme
-                              .primary
-                              .withValues(alpha: 0.15),
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.primary.withValues(alpha: 0.15),
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(
-                            color: Theme.of(context)
-                                .colorScheme
-                                .primary
-                                .withValues(alpha: 0.35),
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.primary.withValues(alpha: 0.35),
                           ),
                         ),
                         child: Icon(
@@ -1183,7 +1618,10 @@ class _PostProcessorScreenState extends State<PostProcessorScreen> {
           decoration: BoxDecoration(
             color: const Color(0xFF1E293B),
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.12), width: 1),
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.12),
+              width: 1,
+            ),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -1201,14 +1639,20 @@ class _PostProcessorScreenState extends State<PostProcessorScreen> {
                         color: Colors.redAccent.withValues(alpha: 0.35),
                       ),
                     ),
-                    child: const Icon(Icons.stop_circle_outlined,
-                        color: Colors.redAccent, size: 20),
+                    child: const Icon(
+                      Icons.stop_circle_outlined,
+                      color: Colors.redAccent,
+                      size: 20,
+                    ),
                   ),
                   const SizedBox(width: 12),
                   const Expanded(
                     child: Text(
                       'Cancel Processing?',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                   ),
                 ],
@@ -1285,11 +1729,7 @@ class _PostProcessorScreenState extends State<PostProcessorScreen> {
       body: Container(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
-            colors: [
-              Color(0xFF0F172A),
-              Color(0xFF16213E),
-              Color(0xFF1E293B),
-            ],
+            colors: [Color(0xFF0F172A), Color(0xFF16213E), Color(0xFF1E293B)],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
@@ -1297,149 +1737,166 @@ class _PostProcessorScreenState extends State<PostProcessorScreen> {
         child: Stack(
           children: [
             Column(
-            children: [
-              Expanded(
-                child: Center(
-                  child: SingleChildScrollView(
-                    child: Padding(
-                      padding: const EdgeInsets.all(24),
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 500),
-                        child: AnimatedSwitcher(
-                          duration: const Duration(milliseconds: 500),
-                          switchInCurve: Curves.easeOutCubic,
-                          switchOutCurve: Curves.easeInCubic,
-                          transitionBuilder: (child, animation) {
-                            final slide = Tween<Offset>(
-                              begin: const Offset(0, 0.08),
-                              end: Offset.zero,
-                            ).animate(CurvedAnimation(
-                              parent: animation,
-                              curve: Curves.easeOutCubic,
-                            ));
-                            return FadeTransition(
-                              opacity: animation,
-                              child: SlideTransition(
-                                position: slide,
-                                child: child,
-                              ),
-                            );
-                          },
-                          child: _buildContent(),
+              children: [
+                Expanded(
+                  child: Center(
+                    child: SingleChildScrollView(
+                      child: Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 500),
+                          child: AnimatedSwitcher(
+                            duration: const Duration(milliseconds: 500),
+                            switchInCurve: Curves.easeOutCubic,
+                            switchOutCurve: Curves.easeInCubic,
+                            transitionBuilder: (child, animation) {
+                              final slide =
+                                  Tween<Offset>(
+                                    begin: const Offset(0, 0.08),
+                                    end: Offset.zero,
+                                  ).animate(
+                                    CurvedAnimation(
+                                      parent: animation,
+                                      curve: Curves.easeOutCubic,
+                                    ),
+                                  );
+                              return FadeTransition(
+                                opacity: animation,
+                                child: SlideTransition(
+                                  position: slide,
+                                  child: child,
+                                ),
+                              );
+                            },
+                            child: _buildContent(),
+                          ),
                         ),
                       ),
                     ),
                   ),
                 ),
-              ),
-              Padding(
-                padding: const EdgeInsets.only(bottom: 22),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      'Powered by ',
-                      style: TextStyle(
-                        fontFamily: 'AtkinsonHyperlegible',
-                        fontSize: 18,
-                        color: Colors.grey,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                    ShaderMask(
-                      shaderCallback: (bounds) => const LinearGradient(
-                        colors: [
-                          Color(0xFFFF9D7A),
-                          Color(0xFFFF7A85),
-                          Color(0xFFC49FE8),
-                        ],
-                        begin: Alignment.centerLeft,
-                        end: Alignment.centerRight,
-                      ).createShader(bounds),
-                      child: const Text(
-                        'Open Resin Alliance',
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 22),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        'Powered by ',
                         style: TextStyle(
                           fontFamily: 'AtkinsonHyperlegible',
                           fontSize: 18,
-                          color: Colors.white,
+                          color: Colors.grey,
                           fontWeight: FontWeight.w500,
                         ),
                       ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-            Positioned(
-            left: 16,
-            bottom: 16,
-            child: Row(
-              children: [
-                DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF1E293B),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.25),
-                        blurRadius: 10,
-                        offset: const Offset(0, 4),
+                      ShaderMask(
+                        shaderCallback: (bounds) => const LinearGradient(
+                          colors: [
+                            Color(0xFFFF9D7A),
+                            Color(0xFFFF7A85),
+                            Color(0xFFC49FE8),
+                          ],
+                          begin: Alignment.centerLeft,
+                          end: Alignment.centerRight,
+                        ).createShader(bounds),
+                        child: const Text(
+                          'Open Resin Alliance',
+                          style: TextStyle(
+                            fontFamily: 'AtkinsonHyperlegible',
+                            fontSize: 18,
+                            color: Colors.white,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
                       ),
                     ],
-                  ),
-                  child: IconButton(
-                    tooltip: 'Settings',
-                    onPressed: _showSettingsDialog,
-                    icon: const Icon(Icons.settings, size: 18),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF1E293B),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.25),
-                        blurRadius: 10,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
-                  ),
-                  child: IconButton(
-                    tooltip: 'Run in background',
-                    onPressed: _showBackgroundOptionsDialog,
-                    icon: const Icon(Icons.auto_awesome, size: 18, color: Color(0xFF22D3EE)),
                   ),
                 ),
               ],
             ),
-          ),
             Positioned(
-            right: 16,
-            bottom: 16,
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                color: const Color(0xFF1E293B),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.25),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
+              left: 16,
+              bottom: 16,
+              child: Row(
+                children: [
+                  DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1E293B),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.12),
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.25),
+                          blurRadius: 10,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: IconButton(
+                      tooltip: 'Settings',
+                      onPressed: _showSettingsDialog,
+                      icon: const Icon(Icons.settings, size: 18),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1E293B),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.12),
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.25),
+                          blurRadius: 10,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: IconButton(
+                      tooltip: 'Run in background',
+                      onPressed: _showBackgroundOptionsDialog,
+                      icon: const Icon(
+                        Icons.auto_awesome,
+                        size: 18,
+                        color: Color(0xFF22D3EE),
+                      ),
+                    ),
                   ),
                 ],
               ),
-              child: IconButton(
-                tooltip: 'Cancel',
-                onPressed: _showCancelDialog,
-                icon: const Icon(Icons.stop_circle_outlined, size: 18, color: Colors.redAccent),
-              ),
             ),
+            Positioned(
+              right: 16,
+              bottom: 16,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1E293B),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.12),
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.25),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: IconButton(
+                  tooltip: 'Cancel',
+                  onPressed: _showCancelDialog,
+                  icon: const Icon(
+                    Icons.stop_circle_outlined,
+                    size: 18,
+                    color: Colors.redAccent,
+                  ),
+                ),
+              ),
             ),
           ],
         ),
@@ -1486,8 +1943,11 @@ class _PostProcessorScreenState extends State<PostProcessorScreen> {
             key: const ValueKey('no-device'),
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.print_disabled,
-                  color: Colors.orange.shade400, size: 48),
+              Icon(
+                Icons.print_disabled,
+                color: Colors.orange.shade400,
+                size: 48,
+              ),
               const SizedBox(height: 16),
               const Text(
                 'No Printer Selected',
@@ -1538,8 +1998,8 @@ class _PostProcessorScreenState extends State<PostProcessorScreen> {
       case _Phase.uploading:
         return _buildActivityWidget(
           _isDeviceProcessing
-            ? 'Processing on device...'
-            : 'Uploading to ${widget.activeDevice!.displayName}...',
+              ? 'Processing on device...'
+              : 'Uploading to ${widget.activeDevice!.displayName}...',
           key: _isDeviceProcessing ? 'processing' : 'activity',
           progress: _uploadProgress,
           color: Colors.cyan,
@@ -1577,7 +2037,10 @@ class _PostProcessorScreenState extends State<PostProcessorScreen> {
             child: TweenAnimationBuilder<double>(
               duration: const Duration(milliseconds: 350),
               curve: Curves.easeOutCubic,
-              tween: Tween<double>(begin: 0, end: isDeviceProcessing ? 0 : progress),
+              tween: Tween<double>(
+                begin: 0,
+                end: isDeviceProcessing ? 0 : progress,
+              ),
               builder: (context, value, _) => LinearProgressIndicator(
                 value: isDeviceProcessing ? null : value,
                 color: color,
@@ -1591,8 +2054,8 @@ class _PostProcessorScreenState extends State<PostProcessorScreen> {
             isDeviceProcessing
                 ? 'Processing on device... This may take a while.'
                 : '${(progress * 100).toStringAsFixed(0)}%'
-                    '${_conversionProgress != null ? " (${_conversionProgress!.current}/${_conversionProgress!.total})" : ""}'
-                    '${_conversionProgress?.workers != null ? ' • ${_conversionProgress!.workers} workers' : ''}',
+                      '${_conversionProgress != null ? " (${_conversionProgress!.current}/${_conversionProgress!.total})" : ""}'
+                      '${_conversionProgress?.workers != null ? ' • ${_conversionProgress!.workers} workers' : ''}',
             style: TextStyle(
               fontSize: 12,
               color: Colors.white.withValues(alpha: 0.5),
@@ -1600,7 +2063,8 @@ class _PostProcessorScreenState extends State<PostProcessorScreen> {
           ),
           const SizedBox(height: 30),
           _buildTelemetryContainer(isDeviceProcessing: isDeviceProcessing),
-          if (_conversionProgress?.workers != null && _conversionProgress!.workers! > 5) ...[
+          if (_conversionProgress?.workers != null &&
+              _conversionProgress!.workers! > 5) ...[
             const SizedBox(height: 14),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
@@ -1728,7 +2192,9 @@ class _PostProcessorScreenState extends State<PostProcessorScreen> {
           final elapsed = DateTime.now().difference(started);
           final mm = elapsed.inMinutes;
           final ss = elapsed.inSeconds % 60;
-          lines.add('Device processing • ${mm}m ${ss.toString().padLeft(2, '0')}s');
+          lines.add(
+            'Device processing • ${mm}m ${ss.toString().padLeft(2, '0')}s',
+          );
         }
       } else {
         lines.add('Network upload');
@@ -1760,7 +2226,7 @@ class _PostProcessorScreenState extends State<PostProcessorScreen> {
 
   Color _getColorForFileSize() {
     final layers = _result?.layerCount ?? 0;
-    
+
     // Thresholds: 50 layers (orange), 150 layers (deep orange), 300 layers+ (red)
     if (layers >= 300) {
       return Colors.red.shade600;
@@ -1858,9 +2324,7 @@ class _PostProcessorScreenState extends State<PostProcessorScreen> {
         : null;
     final totalDurationText = totalDuration == null
         ? null
-        : '${totalDuration.inMinutes}m ${
-            (totalDuration.inSeconds % 60).toString().padLeft(2, '0')
-          }s';
+        : '${totalDuration.inMinutes}m ${(totalDuration.inSeconds % 60).toString().padLeft(2, '0')}s';
 
     return Column(
       key: const ValueKey('complete'),
@@ -1875,11 +2339,16 @@ class _PostProcessorScreenState extends State<PostProcessorScreen> {
               scale: scale,
               child: Container(
                 width: double.infinity,
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 24,
+                ),
                 decoration: BoxDecoration(
                   color: const Color(0xFF111827),
                   borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.08),
+                  ),
                   boxShadow: [
                     BoxShadow(
                       color: Colors.black.withValues(alpha: 0.35),
@@ -1896,7 +2365,10 @@ class _PostProcessorScreenState extends State<PostProcessorScreen> {
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
                         gradient: LinearGradient(
-                          colors: [Colors.green.shade400, Colors.green.shade700],
+                          colors: [
+                            Colors.green.shade400,
+                            Colors.green.shade700,
+                          ],
                         ),
                         boxShadow: [
                           BoxShadow(
@@ -1906,12 +2378,19 @@ class _PostProcessorScreenState extends State<PostProcessorScreen> {
                           ),
                         ],
                       ),
-                      child: const Icon(Icons.check, color: Colors.white, size: 48),
+                      child: const Icon(
+                        Icons.check,
+                        color: Colors.white,
+                        size: 48,
+                      ),
                     ),
                     const SizedBox(height: 16),
                     const Text(
                       'Upload Complete',
-                      style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                     const SizedBox(height: 6),
                     Text(
@@ -1955,53 +2434,53 @@ class _PostProcessorScreenState extends State<PostProcessorScreen> {
         ),
         const SizedBox(height: 20),
         if (_uploadedPlateId != null) ...[
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: _isStartingPrint ? null : _startPrint,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.purple.shade700,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                    ),
-                    child: _isStartingPrint
-                        ? const SizedBox(
-                            height: 18,
-                            width: 18,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
-                          )
-                        : const Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(Icons.play_arrow, size: 22),
-                              SizedBox(width: 8),
-                              Text(
-                                'Start Print',
-                                style: TextStyle(
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ],
-                          ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-              ],
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton(
-                  onPressed: _isStartingPrint ? null : () => exit(0),
-                  style: OutlinedButton.styleFrom(
-                    side: BorderSide(color: Colors.grey.shade700),
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                  ),
-                  child: const Text('Close'),
-                ),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: _isStartingPrint ? null : _startPrint,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.purple.shade700,
+                padding: const EdgeInsets.symmetric(vertical: 14),
               ),
-            ],
+              child: _isStartingPrint
+                  ? const SizedBox(
+                      height: 18,
+                      width: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.play_arrow, size: 22),
+                        SizedBox(width: 8),
+                        Text(
+                          'Start Print',
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+            ),
+          ),
+          const SizedBox(height: 12),
+        ],
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton(
+            onPressed: _isStartingPrint ? null : () => exit(0),
+            style: OutlinedButton.styleFrom(
+              side: BorderSide(color: Colors.grey.shade700),
+              padding: const EdgeInsets.symmetric(vertical: 14),
+            ),
+            child: const Text('Close'),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -2197,9 +2676,7 @@ class _StaticArcPainter extends CustomPainter {
 class _AnimatedProcessingBlock extends StatefulWidget {
   final Color primaryColor;
 
-  const _AnimatedProcessingBlock({
-    required this.primaryColor,
-  });
+  const _AnimatedProcessingBlock({required this.primaryColor});
 
   @override
   State<_AnimatedProcessingBlock> createState() =>
@@ -2295,7 +2772,8 @@ class _CubeSlicePainter extends CustomPainter {
       final distanceFromCenter = (i - centerIndex).abs();
 
       // Add wavy motion with sine for peeling effect
-      final waveAmount = math.sin((i / sliceCount) * math.pi) * separation * 0.3;
+      final waveAmount =
+          math.sin((i / sliceCount) * math.pi) * separation * 0.3;
       final sliceVerticalOffset =
           distanceFromCenter * separation * (i < centerIndex ? -0.5 : 0.5);
       final sliceHorizontalOffset = waveAmount;
@@ -2323,8 +2801,10 @@ class _CubeSlicePainter extends CustomPainter {
         ..style = PaintingStyle.fill;
 
       // Draw front face with rounded corners for bubble effect
-      final frontRRect =
-          RRect.fromRectAndRadius(sliceRect, const Radius.circular(cornerRadius));
+      final frontRRect = RRect.fromRectAndRadius(
+        sliceRect,
+        const Radius.circular(cornerRadius),
+      );
       canvas.drawRRect(frontRRect, gradientFill);
       canvas.drawRRect(frontRRect, outlineStroke);
 
@@ -2376,7 +2856,4 @@ class _CubeSlicePainter extends CustomPainter {
         oldDelegate.separation != separation ||
         oldDelegate.primaryColor != primaryColor;
   }
-
 }
-
-
