@@ -50,7 +50,7 @@ class _ConversionScreenState extends State<ConversionScreen> {
   ResinProfile? _autoResinProfile;
   bool _autoStartPrint = false;
   bool _isResinLoading = false;
-  
+
   // Progress update key to rebuild only the progress widget when needed
   final _progressKey = GlobalKey<_ProgressSectionState>();
 
@@ -74,9 +74,15 @@ class _ConversionScreenState extends State<ConversionScreen> {
     // Re-evaluate profile selection when active device changes
     final oldKey = oldWidget.activeDevice?.cacheKey;
     final newKey = widget.activeDevice?.cacheKey;
-    debugPrint('[didUpdateWidget] oldDevice=${oldWidget.activeDevice?.displayName} (key=$oldKey)');
-    debugPrint('[didUpdateWidget] newDevice=${widget.activeDevice?.displayName} (key=$newKey)');
-    debugPrint('[didUpdateWidget] hasFileInfo=${_fileInfo != null} profileCount=${_availableProfiles.length}');
+    debugPrint(
+      '[didUpdateWidget] oldDevice=${oldWidget.activeDevice?.displayName} (key=$oldKey)',
+    );
+    debugPrint(
+      '[didUpdateWidget] newDevice=${widget.activeDevice?.displayName} (key=$newKey)',
+    );
+    debugPrint(
+      '[didUpdateWidget] hasFileInfo=${_fileInfo != null} profileCount=${_availableProfiles.length}',
+    );
     if (newKey != oldKey &&
         _fileInfo != null &&
         _availableProfiles.isNotEmpty) {
@@ -122,50 +128,66 @@ class _ConversionScreenState extends State<ConversionScreen> {
     try {
       final profiles = await client.listResinProfiles();
       var selectable = profiles.where((p) => !p.locked).toList();
-      
+
       debugPrint('[ProfileFilter] Total profiles: ${selectable.length}');
-      
+
       // Filter by layer height if we have file info
-      final ctbLayerHeightUm = (_fileInfo != null) 
-          ? (_fileInfo!.layerHeight * 1000).round() 
+      final ctbLayerHeightUm = (_fileInfo != null)
+          ? (_fileInfo!.layerHeight * 1000).round()
           : null;
-      
+
       if (ctbLayerHeightUm != null) {
         debugPrint('[ProfileFilter] CTB layer height: ${ctbLayerHeightUm}µm');
-        
+
         final matchingProfiles = selectable.where((p) {
           // Try 1: Check Depth field (layer height in microns)
           final depth = p.raw['Depth'] ?? p.raw['depth'];
           if (depth != null) {
-            final profileDepthUm = (depth is int) ? depth : int.tryParse('$depth');
+            final profileDepthUm = (depth is int)
+                ? depth
+                : int.tryParse('$depth');
             if (profileDepthUm != null && profileDepthUm == ctbLayerHeightUm) {
-              debugPrint('[ProfileFilter] ${p.name}: Depth=${profileDepthUm}µm ✓ MATCH');
+              debugPrint(
+                '[ProfileFilter] ${p.name}: Depth=${profileDepthUm}µm ✓ MATCH',
+              );
               return true;
             }
           }
-          
+
           // Try 2: Parse layer height from profile name (e.g., "50μm" or "30µm")
-          final nameMatch = RegExp(r'(\d+)\s*[uµ]m', caseSensitive: false).firstMatch(p.name);
+          final nameMatch = RegExp(
+            r'(\d+)\s*[uµ]m',
+            caseSensitive: false,
+          ).firstMatch(p.name);
           if (nameMatch != null) {
             final nameLayerHeight = int.tryParse(nameMatch.group(1)!);
-            if (nameLayerHeight != null && nameLayerHeight == ctbLayerHeightUm) {
-              debugPrint('[ProfileFilter] ${p.name}: name contains ${nameLayerHeight}µm ✓ MATCH');
+            if (nameLayerHeight != null &&
+                nameLayerHeight == ctbLayerHeightUm) {
+              debugPrint(
+                '[ProfileFilter] ${p.name}: name contains ${nameLayerHeight}µm ✓ MATCH',
+              );
               return true;
             }
           }
-          
+
           debugPrint('[ProfileFilter] ${p.name}: Depth=$depth, no match');
           return false;
         }).toList();
-        
-        debugPrint('[ProfileFilter] Matching profiles: ${matchingProfiles.length}');
-        
+
+        debugPrint(
+          '[ProfileFilter] Matching profiles: ${matchingProfiles.length}',
+        );
+
         // Only use filtered list if we found matches
         if (matchingProfiles.isNotEmpty) {
           selectable = matchingProfiles;
         }
       }
-      
+
+      // Remove duplicates by profile name
+      final seen = <String>{};
+      selectable = selectable.where((p) => seen.add(p.name)).toList();
+
       if (!mounted) return;
       setState(() {
         _resinProfiles = selectable;
@@ -192,33 +214,49 @@ class _ConversionScreenState extends State<ConversionScreen> {
       debugPrint('[BoardDetect] No active device');
       return null;
     }
-    
+
     debugPrint('[BoardDetect] Active device: ${activeDevice.displayName}');
-    debugPrint('[BoardDetect]   machineLcdType: ${activeDevice.machineLcdType}');
-    debugPrint('[BoardDetect]   machineProfileLabel: ${activeDevice.machineProfileLabel}');
-    debugPrint('[BoardDetect]   machineResolutionX: ${activeDevice.machineResolutionX}');
-    debugPrint('[BoardDetect]   machineResolutionY: ${activeDevice.machineResolutionY}');
-    debugPrint('[BoardDetect]   machineModelName: ${activeDevice.machineModelName}');
+    debugPrint(
+      '[BoardDetect]   machineLcdType: ${activeDevice.machineLcdType}',
+    );
+    debugPrint(
+      '[BoardDetect]   machineProfileLabel: ${activeDevice.machineProfileLabel}',
+    );
+    debugPrint(
+      '[BoardDetect]   machineResolutionX: ${activeDevice.machineResolutionX}',
+    );
+    debugPrint(
+      '[BoardDetect]   machineResolutionY: ${activeDevice.machineResolutionY}',
+    );
+    debugPrint(
+      '[BoardDetect]   machineModelName: ${activeDevice.machineModelName}',
+    );
     debugPrint('[BoardDetect]   machineSerial: ${activeDevice.machineSerial}');
-    
+
     // Try to infer from machineLcdType first (has bit depth), then machineProfileLabel
     // machineLcdType = "16K 3bit", machineProfileLabel = "16K" — prefer the more specific one
     final lcdType = activeDevice.machineLcdType;
     final profileLabel = activeDevice.machineProfileLabel;
-    debugPrint('[BoardDetect]   checking lcdType="$lcdType" and profileLabel="$profileLabel"');
-    
+    debugPrint(
+      '[BoardDetect]   checking lcdType="$lcdType" and profileLabel="$profileLabel"',
+    );
+
     // Check both labels — if either contains 3bit info, use it
-    final combinedLabel = '${lcdType ?? ''} ${profileLabel ?? ''}'.toLowerCase();
-    final is3Bit = combinedLabel.contains('3bit') || 
-        combinedLabel.contains('3-bit') || 
+    final combinedLabel = '${lcdType ?? ''} ${profileLabel ?? ''}'
+        .toLowerCase();
+    final is3Bit =
+        combinedLabel.contains('3bit') ||
+        combinedLabel.contains('3-bit') ||
         combinedLabel.contains('3 bit');
-    
+
     if (lcdType != null || profileLabel != null) {
       final result = is3Bit ? BoardType.twoBit3Subpixel : BoardType.rgb8Bit;
-      debugPrint('[BoardDetect]   → combined label detection: is3Bit=$is3Bit → $result');
+      debugPrint(
+        '[BoardDetect]   → combined label detection: is3Bit=$is3Bit → $result',
+      );
       return result;
     }
-    
+
     // Fallback: Infer from resolution if available
     final width = activeDevice.machineResolutionX;
     if (width != null) {
@@ -232,9 +270,11 @@ class _ConversionScreenState extends State<ConversionScreen> {
         debugPrint('[BoardDetect]   → 8-bit (width $width in 4900-5200 range)');
         return BoardType.rgb8Bit;
       }
-      debugPrint('[BoardDetect]   → width $width did not match any known range');
+      debugPrint(
+        '[BoardDetect]   → width $width did not match any known range',
+      );
     }
-    
+
     debugPrint('[BoardDetect]   → COULD NOT DETERMINE board type');
     return null;
   }
@@ -246,7 +286,9 @@ class _ConversionScreenState extends State<ConversionScreen> {
   ) {
     if (availableProfiles.isEmpty) return null;
 
-    final hwClass = PrinterProfileDetector.getResolutionClass(fileInfo.resolutionX);
+    final hwClass = PrinterProfileDetector.getResolutionClass(
+      fileInfo.resolutionX,
+    );
     if (hwClass == null) return availableProfiles.first;
 
     // Priority 1: If active device has a known board type, strongly prefer it
@@ -256,24 +298,33 @@ class _ConversionScreenState extends State<ConversionScreen> {
           .where((p) => p.board == activeDeviceBoard)
           .toList();
       if (matching.isNotEmpty) {
-        debugPrint('[AutoSelect] Matched active device board type: $activeDeviceBoard → ${matching.first.name}');
+        debugPrint(
+          '[AutoSelect] Matched active device board type: $activeDeviceBoard → ${matching.first.name}',
+        );
         return matching.first;
       }
-      debugPrint('[AutoSelect] Active device board: $activeDeviceBoard, but no matching profile');
+      debugPrint(
+        '[AutoSelect] Active device board: $activeDeviceBoard, but no matching profile',
+      );
     }
 
     // Priority 2: Use the active device's LCD type if available
     final activeDevice = widget.activeDevice;
     if (activeDevice != null) {
-      final deviceLabel = activeDevice.machineProfileLabel ?? activeDevice.machineLcdType;
+      final deviceLabel =
+          activeDevice.machineProfileLabel ?? activeDevice.machineLcdType;
       if (deviceLabel != null) {
         for (final profile in availableProfiles) {
           if (_profileMatchesLabel(profile, deviceLabel, hwClass)) {
-            debugPrint('[AutoSelect] Matched active device label: $deviceLabel → ${profile.name}');
+            debugPrint(
+              '[AutoSelect] Matched active device label: $deviceLabel → ${profile.name}',
+            );
             return profile;
           }
         }
-        debugPrint('[AutoSelect] Active device label "$deviceLabel" did not match any profile');
+        debugPrint(
+          '[AutoSelect] Active device label "$deviceLabel" did not match any profile',
+        );
       }
     }
 
@@ -284,7 +335,9 @@ class _ConversionScreenState extends State<ConversionScreen> {
 
       for (final profile in availableProfiles) {
         if (_profileMatchesLabel(profile, deviceLabel, hwClass)) {
-          debugPrint('[AutoSelect] Matched cached device label: $deviceLabel → ${profile.name}');
+          debugPrint(
+            '[AutoSelect] Matched cached device label: $deviceLabel → ${profile.name}',
+          );
           return profile;
         }
       }
@@ -298,7 +351,7 @@ class _ConversionScreenState extends State<ConversionScreen> {
     final eightBit = availableProfiles
         .where((p) => p.board == BoardType.rgb8Bit)
         .firstOrNull;
-    
+
     if (hwClass == '16K' && threeBit != null) {
       debugPrint('[AutoSelect] Fallback to 3-bit for 16K: ${threeBit.name}');
       return threeBit;
@@ -312,32 +365,44 @@ class _ConversionScreenState extends State<ConversionScreen> {
       return threeBit;
     }
 
-    debugPrint('[AutoSelect] No match found, using first available: ${availableProfiles.first.name}');
+    debugPrint(
+      '[AutoSelect] No match found, using first available: ${availableProfiles.first.name}',
+    );
     return availableProfiles.first;
   }
 
   /// Handle profile selection with warnings for device mismatches.
   void _onProfileSelected(PrinterProfile profile) {
-    debugPrint('[ProfileSelect] User selected: ${profile.name} (${profile.board})');
+    debugPrint(
+      '[ProfileSelect] User selected: ${profile.name} (${profile.board})',
+    );
     final activeDevice = widget.activeDevice;
     if (activeDevice == null) {
       debugPrint('[ProfileSelect] No active device, accepting selection');
       setState(() => _selectedProfile = profile);
       return;
     }
-    
+
     final activeDeviceBoard = _getActiveDeviceBoard();
-    debugPrint('[ProfileSelect] Active device board: $activeDeviceBoard, profile board: ${profile.board}');
-    
+    debugPrint(
+      '[ProfileSelect] Active device board: $activeDeviceBoard, profile board: ${profile.board}',
+    );
+
     // Check for mismatch: if active device is determined and doesn't match profile
     if (activeDeviceBoard != null && activeDeviceBoard != profile.board) {
-      final deviceBoardName = activeDeviceBoard == BoardType.twoBit3Subpixel ? '3-bit' : '8-bit';
-      final profileBoardName = profile.board == BoardType.twoBit3Subpixel ? '3-bit' : '8-bit';
-      debugPrint('[ProfileSelect] MISMATCH! Device=$deviceBoardName, Profile=$profileBoardName → showing warning');
+      final deviceBoardName = activeDeviceBoard == BoardType.twoBit3Subpixel
+          ? '3-bit'
+          : '8-bit';
+      final profileBoardName = profile.board == BoardType.twoBit3Subpixel
+          ? '3-bit'
+          : '8-bit';
+      debugPrint(
+        '[ProfileSelect] MISMATCH! Device=$deviceBoardName, Profile=$profileBoardName → showing warning',
+      );
       _showProfileMismatchWarning(profile, deviceBoardName, profileBoardName);
       return;
     }
-    
+
     debugPrint('[ProfileSelect] No mismatch, accepting selection');
     setState(() => _selectedProfile = profile);
   }
@@ -368,8 +433,11 @@ class _ConversionScreenState extends State<ConversionScreen> {
                       color: Colors.amberAccent.withValues(alpha: 0.35),
                     ),
                   ),
-                  child: const Icon(Icons.warning_amber,
-                      color: Colors.amberAccent, size: 20),
+                  child: const Icon(
+                    Icons.warning_amber,
+                    color: Colors.amberAccent,
+                    size: 20,
+                  ),
                 ),
                 const SizedBox(width: 12),
                 const Expanded(
@@ -428,6 +496,278 @@ class _ConversionScreenState extends State<ConversionScreen> {
     );
   }
 
+  /// Check if CTB resolution matches active device resolution.
+  /// Blocks loading if there's a mismatch and shows error dialog.
+  void _checkResolutionMismatch(SliceFileInfo ctbInfo, NanoDlpDevice device) {
+    final ctbResX = ctbInfo.resolutionX;
+    final ctbResY = ctbInfo.resolutionY;
+    final deviceResX = device.machineResolutionX;
+
+    // Skip check if device resolution is unknown
+    if (deviceResX == null) return;
+
+    final deviceLabel = _getResolutionLabel(deviceResX);
+    final ctbLabel = _getResolutionLabel(ctbResX);
+
+    debugPrint(
+      '[ResolutionCheck] CTB: ${ctbResX}x${ctbResY} ($ctbLabel) vs Device: $deviceResX ($deviceLabel)',
+    );
+
+    // Check if resolutions are different classes (e.g., 16K vs 12K)
+    if (deviceLabel != null && ctbLabel != null && deviceLabel != ctbLabel) {
+      // Clear the file to prevent conversion
+      setState(() => _fileInfo = null);
+      _showResolutionMismatchWarning(
+        ctbLabel,
+        deviceLabel,
+        ctbResX,
+        deviceResX,
+      );
+    }
+  }
+
+  /// Get a friendly resolution label from pixel count.
+  /// Returns "16K", "12K", "8K", etc., or null if unknown.
+  String? _getResolutionLabel(int resolutionX) {
+    if (resolutionX >= 14500 && resolutionX <= 15400) return '16K';
+    if (resolutionX >= 11300 && resolutionX <= 11700) return '12K';
+    if (resolutionX >= 7500 && resolutionX <= 7900) return '8K';
+    if (resolutionX >= 4800 && resolutionX <= 5200) return '4K';
+    return null;
+  }
+
+  void _showResolutionMismatchWarning(
+    String ctbLabel,
+    String deviceLabel,
+    int ctbResX,
+    int deviceResX,
+  ) {
+    if (!mounted) return;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => _buildCardDialog(
+        width: 560,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header with icon
+            Row(
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: Colors.red.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: Colors.red.withValues(alpha: 0.4),
+                      width: 1.5,
+                    ),
+                  ),
+                  child: const Icon(
+                    Icons.error_outline,
+                    color: Colors.red,
+                    size: 22,
+                  ),
+                ),
+                const SizedBox(width: 14),
+                const Expanded(
+                  child: Text(
+                    'Resolution Mismatch',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                      height: 1.2,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+
+            // Description
+            Text(
+              'This file cannot be converted on the selected printer and will fail:',
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.9),
+                fontSize: 13,
+                height: 1.5,
+              ),
+            ),
+            const SizedBox(height: 16),
+            // Resolution boxes
+            Row(
+              children: [
+                Expanded(
+                  child: Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF0F172A),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: Colors.orange.withValues(alpha: 0.35),
+                        width: 1.5,
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'CTB File',
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: Colors.white.withValues(alpha: 0.5),
+                            fontWeight: FontWeight.w600,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          '$ctbLabel',
+                          style: const TextStyle(
+                            fontSize: 16,
+                            color: Colors.orange,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          '$ctbResX px',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.orange.withValues(alpha: 0.6),
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF0F172A),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: Colors.cyan.withValues(alpha: 0.35),
+                        width: 1.5,
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Printer',
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: Colors.white.withValues(alpha: 0.5),
+                            fontWeight: FontWeight.w600,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          '$deviceLabel',
+                          style: const TextStyle(
+                            fontSize: 16,
+                            color: Colors.cyan,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          widget.activeDevice?.displayName ?? 'Unknown',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.cyan.withValues(alpha: 0.6),
+                            fontWeight: FontWeight.w500,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+            // Action items
+            Text(
+              'To fix this, do one of:',
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.85),
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 10),
+            ...[
+                  'Re-slice the model for your $deviceLabel printer',
+                  'Load a different $deviceLabel CTB file',
+                  'Switch to a different printer for $ctbLabel',
+                ]
+                .map(
+                  (item) => Padding(
+                    padding: const EdgeInsets.only(bottom: 7),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.only(top: 2, right: 8),
+                          child: Text(
+                            '•',
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.5),
+                              fontSize: 11,
+                            ),
+                          ),
+                        ),
+                        Expanded(
+                          child: Text(
+                            item,
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.75),
+                              fontSize: 12,
+                              height: 1.4,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+                .toList(),
+            const SizedBox(height: 20),
+
+            // Button
+            Align(
+              alignment: Alignment.centerRight,
+              child: ElevatedButton(
+                onPressed: () => Navigator.pop(ctx),
+                style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 28,
+                    vertical: 12,
+                  ),
+                  backgroundColor: Colors.purple.withValues(alpha: 0.8),
+                  elevation: 0,
+                ),
+                child: const Text(
+                  'Close',
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   bool _profileMatchesLabel(
     PrinterProfile profile,
     String deviceLabel,
@@ -439,7 +779,8 @@ class _ConversionScreenState extends State<ConversionScreen> {
     if (!lowerLabel.contains(hwClass.toLowerCase())) return false;
 
     // Check bit-depth match
-    final is3Bit = lowerLabel.contains('3bit') ||
+    final is3Bit =
+        lowerLabel.contains('3bit') ||
         lowerLabel.contains('3-bit') ||
         lowerLabel.contains('3 bit');
 
@@ -466,7 +807,7 @@ class _ConversionScreenState extends State<ConversionScreen> {
 
   Future<void> _loadFile(String path) async {
     final fileName = path.split(Platform.pathSeparator).last;
-    
+
     // Show loading dialog
     if (!mounted) return;
     showDialog(
@@ -487,9 +828,9 @@ class _ConversionScreenState extends State<ConversionScreen> {
             const SizedBox(height: 20),
             Text(
               'Analyzing File',
-              style: Theme.of(ctx).textTheme.titleMedium!.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
+              style: Theme.of(
+                ctx,
+              ).textTheme.titleMedium!.copyWith(fontWeight: FontWeight.w600),
             ),
             const SizedBox(height: 10),
             Text(
@@ -528,35 +869,51 @@ class _ConversionScreenState extends State<ConversionScreen> {
 
       if (!mounted) return;
       Navigator.pop(context); // Close loading dialog
-      
+
       // Check for corrupt layers
       final corruptLayers = await _converter.checkForCorruptLayers(path);
       if (corruptLayers.isNotEmpty && mounted) {
         _showCorruptLayersWarning(corruptLayers, info.layerCount);
       }
 
-      debugPrint('[LoadFile] File loaded: ${info.resolutionX}x${info.resolutionY}');
-      debugPrint('[LoadFile] Available profiles: ${profiles.map((p) => '${p.name} (${p.board})').join(', ')}');
-      debugPrint('[LoadFile] Active device at load time: ${widget.activeDevice?.displayName ?? 'NONE'}');
-      debugPrint('[LoadFile]   machineLcdType: ${widget.activeDevice?.machineLcdType}');
-      debugPrint('[LoadFile]   machineProfileLabel: ${widget.activeDevice?.machineProfileLabel}');
+      debugPrint(
+        '[LoadFile] File loaded: ${info.resolutionX}x${info.resolutionY}',
+      );
+      debugPrint(
+        '[LoadFile] Available profiles: ${profiles.map((p) => '${p.name} (${p.board})').join(', ')}',
+      );
+      debugPrint(
+        '[LoadFile] Active device at load time: ${widget.activeDevice?.displayName ?? 'NONE'}',
+      );
+      debugPrint(
+        '[LoadFile]   machineLcdType: ${widget.activeDevice?.machineLcdType}',
+      );
+      debugPrint(
+        '[LoadFile]   machineProfileLabel: ${widget.activeDevice?.machineProfileLabel}',
+      );
       debugPrint('[LoadFile] Cached devices: ${devices.length}');
       for (final d in devices) {
-        debugPrint('[LoadFile]   cached: ${d.displayName} lcdType=${d.machineLcdType} profileLabel=${d.machineProfileLabel} resX=${d.machineResolutionX}');
+        debugPrint(
+          '[LoadFile]   cached: ${d.displayName} lcdType=${d.machineLcdType} profileLabel=${d.machineProfileLabel} resX=${d.machineResolutionX}',
+        );
       }
 
       final selectedProfile = _autoSelectProfile(profiles, info);
-      debugPrint('[LoadFile] SELECTED PROFILE: ${selectedProfile?.name} (${selectedProfile?.board})');
+      debugPrint(
+        '[LoadFile] SELECTED PROFILE: ${selectedProfile?.name} (${selectedProfile?.board})',
+      );
 
       setState(() {
         _selectedFilePath = path;
         _fileInfo = info;
         _availableProfiles = profiles;
-        _cachedDevices = devices;  // Update with fresh device info
+        _cachedDevices = devices; // Update with fresh device info
         _selectedProfile = selectedProfile;
       });
 
+      // Check for resolution mismatch with active device
       if (widget.activeDevice != null) {
+        _checkResolutionMismatch(info, widget.activeDevice!);
         _loadResinProfiles();
       }
     } catch (e) {
@@ -654,8 +1011,11 @@ class _ConversionScreenState extends State<ConversionScreen> {
                       color: Colors.cyan.shade300.withValues(alpha: 0.35),
                     ),
                   ),
-                  child: Icon(Icons.cloud_upload_outlined,
-                      color: Colors.cyan.shade300, size: 20),
+                  child: Icon(
+                    Icons.cloud_upload_outlined,
+                    color: Colors.cyan.shade300,
+                    size: 20,
+                  ),
                 ),
                 const SizedBox(width: 12),
                 const Expanded(
@@ -677,21 +1037,30 @@ class _ConversionScreenState extends State<ConversionScreen> {
               decoration: BoxDecoration(
                 color: Colors.white.withValues(alpha: 0.04),
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(
-                  color: Colors.white.withValues(alpha: 0.08),
-                ),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   _promptRow(Icons.print, 'Printer', device.displayName),
                   const SizedBox(height: 6),
-                  _promptRow(Icons.insert_drive_file_outlined, 'File', fileName),
+                  _promptRow(
+                    Icons.insert_drive_file_outlined,
+                    'File',
+                    fileName,
+                  ),
                   const SizedBox(height: 6),
-                  _promptRow(Icons.data_usage, 'Size',
-                      '${sizeMb.toStringAsFixed(1)} MB'),
+                  _promptRow(
+                    Icons.data_usage,
+                    'Size',
+                    '${sizeMb.toStringAsFixed(1)} MB',
+                  ),
                   const SizedBox(height: 6),
-                  _promptRow(Icons.memory, 'Profile', result.targetProfile.name),
+                  _promptRow(
+                    Icons.memory,
+                    'Profile',
+                    result.targetProfile.name,
+                  ),
                 ],
               ),
             ),
@@ -758,6 +1127,27 @@ class _ConversionScreenState extends State<ConversionScreen> {
     final outputPath = _result?.outputPath;
     if (device == null || outputPath == null) return;
 
+    // Check resolution match before uploading
+    if (_fileInfo != null) {
+      final ctbResX = _fileInfo!.resolutionX;
+      final deviceResX = device.machineResolutionX;
+      if (deviceResX != null) {
+        final deviceLabel = _getResolutionLabel(deviceResX);
+        final ctbLabel = _getResolutionLabel(ctbResX);
+        if (deviceLabel != null &&
+            ctbLabel != null &&
+            deviceLabel != ctbLabel) {
+          _showResolutionMismatchWarning(
+            ctbLabel,
+            deviceLabel,
+            ctbResX,
+            deviceResX,
+          );
+          return;
+        }
+      }
+    }
+
     setState(() => _isUploading = true);
 
     final client = NanoDlpClient(device);
@@ -765,48 +1155,58 @@ class _ConversionScreenState extends State<ConversionScreen> {
       // Fetch resin profiles from the device
       final profiles = await client.listResinProfiles();
       var selectable = profiles.where((p) => !p.locked).toList();
-      
+
       // Filter by layer height if we have file info
-      final ctbLayerHeightUm = (_fileInfo != null) 
-          ? (_fileInfo!.layerHeight * 1000).round() 
+      final ctbLayerHeightUm = (_fileInfo != null)
+          ? (_fileInfo!.layerHeight * 1000).round()
           : null;
       if (ctbLayerHeightUm != null) {
         final matchingProfiles = selectable.where((p) {
           // Try 1: Check Depth field (layer height in microns)
           final depth = p.raw['Depth'] ?? p.raw['depth'];
           if (depth != null) {
-            final profileDepthUm = (depth is int) ? depth : int.tryParse('$depth');
+            final profileDepthUm = (depth is int)
+                ? depth
+                : int.tryParse('$depth');
             if (profileDepthUm != null && profileDepthUm == ctbLayerHeightUm) {
               return true;
             }
           }
-          
+
           // Try 2: Parse layer height from profile name (e.g., "50μm" or "30µm")
-          final nameMatch = RegExp(r'(\d+)\s*[uµ]m', caseSensitive: false).firstMatch(p.name);
+          final nameMatch = RegExp(
+            r'(\d+)\s*[uµ]m',
+            caseSensitive: false,
+          ).firstMatch(p.name);
           if (nameMatch != null) {
             final nameLayerHeight = int.tryParse(nameMatch.group(1)!);
-            if (nameLayerHeight != null && nameLayerHeight == ctbLayerHeightUm) {
+            if (nameLayerHeight != null &&
+                nameLayerHeight == ctbLayerHeightUm) {
               return true;
             }
           }
-          
+
           return false;
         }).toList();
-        
+
         // Only use filtered list if we found matches
         if (matchingProfiles.isNotEmpty) {
           selectable = matchingProfiles;
         }
       }
-      
+
+      // Remove duplicates by profile name
+      final seen = <String>{};
+      selectable = selectable.where((p) => seen.add(p.name)).toList();
+
       if (selectable.isEmpty) {
         if (mounted) {
           final msg = ctbLayerHeightUm != null
               ? 'No material profiles found for ${ctbLayerHeightUm}µm layer height.'
               : 'No material profiles found on device.';
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(msg)),
-          );
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text(msg)));
         }
         setState(() => _isUploading = false);
         return;
@@ -845,7 +1245,7 @@ class _ConversionScreenState extends State<ConversionScreen> {
         outputPath,
         jobName: jobName,
         profileId: selectedResin.profileId,
-        onProgress: (p) => progress.value = p * 0.6,  // 0% – 60%
+        onProgress: (p) => progress.value = p * 0.6, // 0% – 60%
       );
 
       if (!result.success) {
@@ -894,9 +1294,11 @@ class _ConversionScreenState extends State<ConversionScreen> {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: Text(startResult.$1
-                    ? 'Print started!'
-                    : (startResult.$2 ?? 'Failed to start print')),
+                content: Text(
+                  startResult.$1
+                      ? 'Print started!'
+                      : (startResult.$2 ?? 'Failed to start print'),
+                ),
                 backgroundColor: startResult.$1
                     ? Colors.green.shade700
                     : Colors.red.shade700,
@@ -910,9 +1312,9 @@ class _ConversionScreenState extends State<ConversionScreen> {
     } catch (e) {
       _closeUploadDialog();
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Upload failed: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Upload failed: $e')));
       }
     } finally {
       client.dispose();
@@ -946,21 +1348,21 @@ class _ConversionScreenState extends State<ConversionScreen> {
                       width: 40,
                       height: 40,
                       decoration: BoxDecoration(
-                        color: Theme.of(context)
-                            .colorScheme
-                            .primary
-                            .withValues(alpha: 0.15),
+                        color: Theme.of(
+                          context,
+                        ).colorScheme.primary.withValues(alpha: 0.15),
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
-                          color: Theme.of(context)
-                              .colorScheme
-                              .primary
-                              .withValues(alpha: 0.35),
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.primary.withValues(alpha: 0.35),
                         ),
                       ),
-                      child: Icon(Icons.cloud_upload_outlined,
-                          color: Theme.of(context).colorScheme.primary,
-                          size: 20),
+                      child: Icon(
+                        Icons.cloud_upload_outlined,
+                        color: Theme.of(context).colorScheme.primary,
+                        size: 20,
+                      ),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
@@ -1009,10 +1411,9 @@ class _ConversionScreenState extends State<ConversionScreen> {
                   dropdownColor: const Color(0xFF1E293B),
                   isExpanded: true,
                   items: profiles
-                      .map((p) => DropdownMenuItem(
-                            value: p,
-                            child: Text(p.name),
-                          ))
+                      .map(
+                        (p) => DropdownMenuItem(value: p, child: Text(p.name)),
+                      )
                       .toList(),
                   onChanged: (value) {
                     if (value == null) return;
@@ -1094,12 +1495,13 @@ class _ConversionScreenState extends State<ConversionScreen> {
                     decoration: BoxDecoration(
                       color: primary.withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: primary.withValues(alpha: 0.4),
-                      ),
+                      border: Border.all(color: primary.withValues(alpha: 0.4)),
                     ),
-                    child: Icon(Icons.cloud_upload_outlined,
-                        color: primary, size: 20),
+                    child: Icon(
+                      Icons.cloud_upload_outlined,
+                      color: primary,
+                      size: 20,
+                    ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -1271,8 +1673,11 @@ class _ConversionScreenState extends State<ConversionScreen> {
                           color: Colors.green.withValues(alpha: 0.35),
                         ),
                       ),
-                      child: Icon(Icons.check_circle,
-                          color: Colors.green.shade400, size: 20),
+                      child: Icon(
+                        Icons.check_circle,
+                        color: Colors.green.shade400,
+                        size: 20,
+                      ),
                     ),
                     const SizedBox(width: 12),
                     const Expanded(
@@ -1303,21 +1708,23 @@ class _ConversionScreenState extends State<ConversionScreen> {
                         onPressed: isStartingPrint
                             ? null
                             : () async {
-                                setDialogState(
-                                    () => isStartingPrint = true);
+                                setDialogState(() => isStartingPrint = true);
                                 final client = NanoDlpClient(device);
                                 try {
-                                  final result =
-                                      await client.startPrint(plateId);
+                                  final result = await client.startPrint(
+                                    plateId,
+                                  );
                                   if (!ctx.mounted) return;
                                   Navigator.of(ctx).pop();
                                   if (mounted) {
                                     ScaffoldMessenger.of(context).showSnackBar(
                                       SnackBar(
-                                        content: Text(result.$1
-                                            ? 'Print started!'
-                                            : (result.$2 ??
-                                                'Failed to start print')),
+                                        content: Text(
+                                          result.$1
+                                              ? 'Print started!'
+                                              : (result.$2 ??
+                                                    'Failed to start print'),
+                                        ),
                                         backgroundColor: result.$1
                                             ? Colors.green.shade700
                                             : Colors.red.shade700,
@@ -1326,13 +1733,12 @@ class _ConversionScreenState extends State<ConversionScreen> {
                                   }
                                 } catch (e) {
                                   if (!ctx.mounted) return;
-                                  setDialogState(
-                                      () => isStartingPrint = false);
-                                      if(mounted) {
-                                        ScaffoldMessenger.of(context).showSnackBar(
-                                          SnackBar(content: Text('Error: $e')),
-                                      );
-                                    }
+                                  setDialogState(() => isStartingPrint = false);
+                                  if (mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(content: Text('Error: $e')),
+                                    );
+                                  }
                                 } finally {
                                   client.dispose();
                                 }
@@ -1354,8 +1760,9 @@ class _ConversionScreenState extends State<ConversionScreen> {
                       ),
                     const SizedBox(width: 10),
                     OutlinedButton(
-                      onPressed:
-                          isStartingPrint ? null : () => Navigator.of(ctx).pop(),
+                      onPressed: isStartingPrint
+                          ? null
+                          : () => Navigator.of(ctx).pop(),
                       child: const Text('Close'),
                     ),
                   ],
@@ -1411,10 +1818,7 @@ class _ConversionScreenState extends State<ConversionScreen> {
               const SizedBox(height: 16),
               _buildErrorCard(),
             ],
-            if (_hasLogs) ...[
-              const SizedBox(height: 16),
-              _buildLogSection(),
-            ],
+            if (_hasLogs) ...[const SizedBox(height: 16), _buildLogSection()],
           ],
         );
 
@@ -1451,7 +1855,10 @@ class _ConversionScreenState extends State<ConversionScreen> {
           children: [
             Row(
               children: [
-                Icon(Icons.layers, color: Theme.of(context).colorScheme.primary),
+                Icon(
+                  Icons.layers,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
@@ -1459,9 +1866,8 @@ class _ConversionScreenState extends State<ConversionScreen> {
                     children: [
                       Text(
                         'Source File',
-                        style: Theme.of(context).textTheme.titleMedium!.copyWith(
-                              fontWeight: FontWeight.w600,
-                            ),
+                        style: Theme.of(context).textTheme.titleMedium!
+                            .copyWith(fontWeight: FontWeight.w600),
                       ),
                       const SizedBox(height: 4),
                       Text(
@@ -1482,8 +1888,11 @@ class _ConversionScreenState extends State<ConversionScreen> {
                 padding: const EdgeInsets.only(bottom: 12),
                 child: Row(
                   children: [
-                    const Icon(Icons.insert_drive_file,
-                        size: 18, color: Colors.grey),
+                    const Icon(
+                      Icons.insert_drive_file,
+                      size: 18,
+                      color: Colors.grey,
+                    ),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
@@ -1499,9 +1908,9 @@ class _ConversionScreenState extends State<ConversionScreen> {
               child: OutlinedButton.icon(
                 onPressed: _isConverting ? null : _pickFile,
                 icon: const Icon(Icons.folder_open, size: 18),
-                label: Text(_selectedFilePath == null
-                    ? 'Select CTB File'
-                    : 'Change File'),
+                label: Text(
+                  _selectedFilePath == null ? 'Select CTB File' : 'Change File',
+                ),
               ),
             ),
           ],
@@ -1523,10 +1932,7 @@ class _ConversionScreenState extends State<ConversionScreen> {
           Container(
             decoration: BoxDecoration(
               gradient: LinearGradient(
-                colors: [
-                  primary.withValues(alpha: 0.18),
-                  Colors.transparent,
-                ],
+                colors: [primary.withValues(alpha: 0.18), Colors.transparent],
                 begin: Alignment.centerLeft,
                 end: Alignment.centerRight,
               ),
@@ -1539,20 +1945,19 @@ class _ConversionScreenState extends State<ConversionScreen> {
                 Text(
                   'File Details',
                   style: Theme.of(context).textTheme.titleMedium!.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
                 const Spacer(),
                 // Glowing resolution badge
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 5,
+                  ),
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
-                      colors: [
-                        primary,
-                        primary.withValues(alpha: 0.7),
-                      ],
+                      colors: [primary, primary.withValues(alpha: 0.7)],
                     ),
                     borderRadius: BorderRadius.circular(20),
                     boxShadow: [
@@ -1603,8 +2008,10 @@ class _ConversionScreenState extends State<ConversionScreen> {
                                 top: 8,
                                 right: 8,
                                 child: IconButton(
-                                  icon: const Icon(Icons.close,
-                                      color: Colors.white),
+                                  icon: const Icon(
+                                    Icons.close,
+                                    color: Colors.white,
+                                  ),
                                   onPressed: () => Navigator.pop(context),
                                 ),
                               ),
@@ -1619,7 +2026,8 @@ class _ConversionScreenState extends State<ConversionScreen> {
                         color: const Color(0xFF0D1117),
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
-                            color: Colors.white.withValues(alpha: 0.08)),
+                          color: Colors.white.withValues(alpha: 0.08),
+                        ),
                         boxShadow: [
                           BoxShadow(
                             color: primary.withValues(alpha: 0.12),
@@ -1631,7 +2039,10 @@ class _ConversionScreenState extends State<ConversionScreen> {
                       padding: const EdgeInsets.all(10),
                       child: LayoutBuilder(
                         builder: (context, constraints) {
-                          final maxHeight = math.min(300.0, constraints.maxWidth * 0.6);
+                          final maxHeight = math.min(
+                            300.0,
+                            constraints.maxWidth * 0.6,
+                          );
                           final height = maxHeight.clamp(180.0, 300.0);
                           return SizedBox(
                             height: height,
@@ -1652,68 +2063,95 @@ class _ConversionScreenState extends State<ConversionScreen> {
 
                 _sectionLabel('GEOMETRY'),
                 const SizedBox(height: 8),
-                Row(children: [
-                  Expanded(
+                Row(
+                  children: [
+                    Expanded(
                       child: _statTile(
-                          Icons.aspect_ratio_rounded,
-                          'Resolution',
-                          '${info.resolutionX} × ${info.resolutionY}',
-                          Colors.cyanAccent)),
-                  const SizedBox(width: 10),
-                  Expanded(
-                      child: _statTile(Icons.layers_rounded, 'Layers',
-                          '${info.layerCount}', Colors.tealAccent)),
-                ]),
+                        Icons.aspect_ratio_rounded,
+                        'Resolution',
+                        '${info.resolutionX} × ${info.resolutionY}',
+                        Colors.cyanAccent,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: _statTile(
+                        Icons.layers_rounded,
+                        'Layers',
+                        '${info.layerCount}',
+                        Colors.tealAccent,
+                      ),
+                    ),
+                  ],
+                ),
                 const SizedBox(height: 10),
-                Row(children: [
-                  Expanded(
+                Row(
+                  children: [
+                    Expanded(
                       child: _statTile(
-                          Icons.height_rounded,
-                          'Layer Height',
+                        Icons.height_rounded,
+                        'Layer Height',
                         '${_fmt3(info.layerHeight)} mm',
-                          Colors.amberAccent)),
-                  const SizedBox(width: 10),
-                  Expanded(
+                        Colors.amberAccent,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
                       child: _statTile(
-                          Icons.straighten_rounded,
-                          'Print Height',
+                        Icons.straighten_rounded,
+                        'Print Height',
                         '${_fmt3(printHeight)} mm',
-                          Colors.orangeAccent)),
-                ]),
+                        Colors.orangeAccent,
+                      ),
+                    ),
+                  ],
+                ),
                 const SizedBox(height: 18),
                 _sectionLabel('EXPOSURE'),
                 const SizedBox(height: 8),
-                Row(children: [
-                  Expanded(
+                Row(
+                  children: [
+                    Expanded(
                       child: _statTile(
-                          Icons.timer_outlined,
-                          'Normal',
+                        Icons.timer_outlined,
+                        'Normal',
                         '${_fmt3(info.exposureTime)} s',
-                          Colors.lightBlueAccent)),
-                  const SizedBox(width: 10),
-                  Expanded(
+                        Colors.lightBlueAccent,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
                       child: _statTile(
-                          Icons.timer,
-                          'Bottom',
+                        Icons.timer,
+                        'Bottom',
                         '${_fmt3(info.bottomExposureTime)} s',
-                          Colors.purpleAccent)),
-                ]),
+                        Colors.purpleAccent,
+                      ),
+                    ),
+                  ],
+                ),
                 const SizedBox(height: 10),
-                Row(children: [
-                  Expanded(
+                Row(
+                  children: [
+                    Expanded(
                       child: _statTile(
-                          Icons.filter_none_rounded,
-                          'Bottom Layers',
-                          '${info.bottomLayerCount}',
-                          Colors.pinkAccent)),
-                  const SizedBox(width: 10),
-                  Expanded(
+                        Icons.filter_none_rounded,
+                        'Bottom Layers',
+                        '${info.bottomLayerCount}',
+                        Colors.pinkAccent,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
                       child: _statTile(
-                          Icons.swap_vert_rounded,
-                          'Lift Height',
+                        Icons.swap_vert_rounded,
+                        'Lift Height',
                         '${_fmt3(info.liftHeight)} mm',
-                          Colors.greenAccent)),
-                ]),
+                        Colors.greenAccent,
+                      ),
+                    ),
+                  ],
+                ),
               ],
             ),
           ),
@@ -1730,8 +2168,7 @@ class _ConversionScreenState extends State<ConversionScreen> {
           width: 3,
           height: 12,
           decoration: BoxDecoration(
-            color:
-                Theme.of(context).colorScheme.primary.withValues(alpha: 0.6),
+            color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.6),
             borderRadius: BorderRadius.circular(2),
           ),
         ),
@@ -1750,8 +2187,7 @@ class _ConversionScreenState extends State<ConversionScreen> {
   }
 
   /// Individual stat tile with colored icon + label/value.
-  Widget _statTile(
-      IconData icon, String label, String value, Color accent) {
+  Widget _statTile(IconData icon, String label, String value, Color accent) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
@@ -1795,32 +2231,34 @@ class _ConversionScreenState extends State<ConversionScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: items
-          .map((item) => Padding(
-                padding: const EdgeInsets.symmetric(vertical: 3),
-                child: Row(
-                  children: [
-                    SizedBox(
-                      width: 120,
-                      child: Text(
-                        item.$1,
-                        style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.5),
-                          fontSize: 13,
-                        ),
+          .map(
+            (item) => Padding(
+              padding: const EdgeInsets.symmetric(vertical: 3),
+              child: Row(
+                children: [
+                  SizedBox(
+                    width: 120,
+                    child: Text(
+                      item.$1,
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.5),
+                        fontSize: 13,
                       ),
                     ),
-                    Expanded(
-                      child: Text(
-                        item.$2,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w500,
-                          fontSize: 13,
-                        ),
+                  ),
+                  Expanded(
+                    child: Text(
+                      item.$2,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w500,
+                        fontSize: 13,
                       ),
                     ),
-                  ],
-                ),
-              ))
+                  ),
+                ],
+              ),
+            ),
+          )
           .toList(),
     );
   }
@@ -1834,14 +2272,16 @@ class _ConversionScreenState extends State<ConversionScreen> {
           children: [
             Row(
               children: [
-                Icon(Icons.memory,
-                    color: Theme.of(context).colorScheme.primary),
+                Icon(
+                  Icons.memory,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
                 const SizedBox(width: 12),
                 Text(
                   'Target Profile',
                   style: Theme.of(context).textTheme.titleMedium!.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ],
             ),
@@ -1852,7 +2292,9 @@ class _ConversionScreenState extends State<ConversionScreen> {
                 decoration: BoxDecoration(
                   color: Colors.orange.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.orange.withValues(alpha: 0.3)),
+                  border: Border.all(
+                    color: Colors.orange.withValues(alpha: 0.3),
+                  ),
                 ),
                 child: const Row(
                   children: [
@@ -1878,55 +2320,52 @@ class _ConversionScreenState extends State<ConversionScreen> {
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
                       borderSide: BorderSide(
-                          color: Colors.white.withValues(alpha: 0.12)),
+                        color: Colors.white.withValues(alpha: 0.12),
+                      ),
                     ),
                     enabledBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
                       borderSide: BorderSide(
-                          color: Colors.white.withValues(alpha: 0.12)),
+                        color: Colors.white.withValues(alpha: 0.12),
+                      ),
                     ),
-                    contentPadding:
-                        const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 14,
+                    ),
                   ),
                   dropdownColor: const Color(0xFF1E293B),
                   isExpanded: true,
-                  items: _availableProfiles
-                      .map((p) {
-                        final is3Bit =
-                            p.board == BoardType.twoBit3Subpixel;
-                        return DropdownMenuItem(
-                          value: p,
-                          child: Row(
-                            children: [
-                              Icon(
-                                is3Bit
-                                    ? Icons.grain
-                                    : Icons.grid_on,
-                                size: 18,
-                                color: is3Bit
-                                    ? Colors.amberAccent
-                                    : Colors.greenAccent,
-                              ),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: Text(p.name),
-                              ),
-                              Text(
-                                is3Bit ? '3-bit' : '8-bit',
-                                style: TextStyle(
-                                  color:
-                                      Colors.white.withValues(alpha: 0.4),
-                                  fontSize: 12,
-                                ),
-                              ),
-                            ],
+                  items: _availableProfiles.map((p) {
+                    final is3Bit = p.board == BoardType.twoBit3Subpixel;
+                    return DropdownMenuItem(
+                      value: p,
+                      child: Row(
+                        children: [
+                          Icon(
+                            is3Bit ? Icons.grain : Icons.grid_on,
+                            size: 18,
+                            color: is3Bit
+                                ? Colors.amberAccent
+                                : Colors.greenAccent,
                           ),
-                        );
-                      })
-                      .toList(),
+                          const SizedBox(width: 10),
+                          Expanded(child: Text(p.name)),
+                          Text(
+                            is3Bit ? '3-bit' : '8-bit',
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.4),
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }).toList(),
                   onChanged: _isConverting
                       ? null
-                      : (profile) => _onProfileSelected(profile ?? _selectedProfile!),
+                      : (profile) =>
+                            _onProfileSelected(profile ?? _selectedProfile!),
                 ),
               ),
             if (_selectedProfile != null) ...[
@@ -1936,15 +2375,20 @@ class _ConversionScreenState extends State<ConversionScreen> {
                 runSpacing: 6,
                 children: [
                   _chip(
-                      'Board',
-                      _selectedProfile!.board == BoardType.twoBit3Subpixel
-                          ? '3-bit Greyscale'
-                          : '8-bit RGB'),
-                  _chip('Output Width',
-                      '${_selectedProfile!.pngOutputWidth}px'),
+                    'Board',
+                    _selectedProfile!.board == BoardType.twoBit3Subpixel
+                        ? '3-bit Greyscale'
+                        : '8-bit RGB',
+                  ),
+                  _chip(
+                    'Output Width',
+                    '${_selectedProfile!.pngOutputWidth}px',
+                  ),
                   _chip('Max Z', '${_selectedProfile!.maxZHeight} mm'),
-                  _chip('Pixel Pitch',
-                      '${_selectedProfile!.pixelPitchUm.toStringAsFixed(1)} µm'),
+                  _chip(
+                    'Pixel Pitch',
+                    '${_selectedProfile!.pixelPitchUm.toStringAsFixed(1)} µm',
+                  ),
                 ],
               ),
             ],
@@ -1964,8 +2408,10 @@ class _ConversionScreenState extends State<ConversionScreen> {
           children: [
             Row(
               children: [
-                Icon(Icons.auto_awesome,
-                    color: Theme.of(context).colorScheme.primary),
+                Icon(
+                  Icons.auto_awesome,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
                 const SizedBox(width: 12),
                 const Text(
                   'Auto Upload (Large Print)',
@@ -2029,23 +2475,24 @@ class _ConversionScreenState extends State<ConversionScreen> {
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
                     borderSide: BorderSide(
-                        color: Colors.white.withValues(alpha: 0.12)),
+                      color: Colors.white.withValues(alpha: 0.12),
+                    ),
                   ),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
                     borderSide: BorderSide(
-                        color: Colors.white.withValues(alpha: 0.12)),
+                      color: Colors.white.withValues(alpha: 0.12),
+                    ),
                   ),
-                  contentPadding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 14,
+                  ),
                 ),
                 dropdownColor: const Color(0xFF1E293B),
                 isExpanded: true,
                 items: _resinProfiles
-                    .map((p) => DropdownMenuItem(
-                          value: p,
-                          child: Text(p.name),
-                        ))
+                    .map((p) => DropdownMenuItem(value: p, child: Text(p.name)))
                     .toList(),
                 onChanged: _resinProfiles.isEmpty
                     ? null
@@ -2106,10 +2553,10 @@ class _ConversionScreenState extends State<ConversionScreen> {
 
   void _showCorruptLayersWarning(List<int> corruptLayers, int totalLayers) {
     if (!mounted) return;
-    
+
     final layerList = corruptLayers.take(10).map((i) => '#${i + 1}').join(', ');
     final hasMore = corruptLayers.length > 10;
-    
+
     showDialog(
       context: context,
       builder: (ctx) => _buildCardDialog(
@@ -2130,17 +2577,17 @@ class _ConversionScreenState extends State<ConversionScreen> {
                       color: Colors.orange.withValues(alpha: 0.35),
                     ),
                   ),
-                  child: const Icon(Icons.warning_amber_rounded,
-                      color: Colors.orange, size: 20),
+                  child: const Icon(
+                    Icons.warning_amber_rounded,
+                    color: Colors.orange,
+                    size: 20,
+                  ),
                 ),
                 const SizedBox(width: 12),
                 const Expanded(
                   child: Text(
                     'Possible File Corruption',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                    ),
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
                   ),
                 ),
               ],
@@ -2159,9 +2606,7 @@ class _ConversionScreenState extends State<ConversionScreen> {
               decoration: BoxDecoration(
                 color: const Color(0xFF0F172A),
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(
-                  color: Colors.orange.withValues(alpha: 0.3),
-                ),
+                border: Border.all(color: Colors.orange.withValues(alpha: 0.3)),
               ),
               child: Text(
                 '$layerList${hasMore ? ', ...' : ''}',
@@ -2182,31 +2627,37 @@ class _ConversionScreenState extends State<ConversionScreen> {
               ),
             ),
             const SizedBox(height: 6),
-            ...['Incomplete file download', 'Transfer errors', 'Slicer software issues', 'Corrupted support structures']
-                .map((reason) => Padding(
-                      padding: const EdgeInsets.only(left: 8, top: 4),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            '• ',
-                            style: TextStyle(
-                              color: Colors.white.withValues(alpha: 0.6),
-                              fontSize: 12,
-                            ),
-                          ),
-                          Expanded(
-                            child: Text(
-                              reason,
-                              style: TextStyle(
-                                color: Colors.white.withValues(alpha: 0.6),
-                                fontSize: 12,
-                              ),
-                            ),
-                          ),
-                        ],
+            ...[
+              'Incomplete file download',
+              'Transfer errors',
+              'Slicer software issues',
+              'Corrupted support structures',
+            ].map(
+              (reason) => Padding(
+                padding: const EdgeInsets.only(left: 8, top: 4),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '• ',
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.6),
+                        fontSize: 12,
                       ),
-                    )),
+                    ),
+                    Expanded(
+                      child: Text(
+                        reason,
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.6),
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
             const SizedBox(height: 16),
             Text(
               'You can proceed with conversion, but the print may fail or have defects.',
@@ -2237,14 +2688,17 @@ class _ConversionScreenState extends State<ConversionScreen> {
       width: double.infinity,
       height: 48,
       child: ElevatedButton.icon(
-        onPressed:
-            (_isConverting || _selectedProfile == null) ? null : _startConversion,
+        onPressed: (_isConverting || _selectedProfile == null)
+            ? null
+            : _startConversion,
         icon: _isConverting
             ? const SizedBox(
                 width: 18,
                 height: 18,
                 child: CircularProgressIndicator(
-                    strokeWidth: 2, color: Colors.white),
+                  strokeWidth: 2,
+                  color: Colors.white,
+                ),
               )
             : const Icon(Icons.play_arrow),
         label: Text(_isConverting ? 'Converting…' : 'Convert to NanoDLP'),
@@ -2261,7 +2715,9 @@ class _ConversionScreenState extends State<ConversionScreen> {
         decoration: BoxDecoration(
           border: Border(
             left: BorderSide(
-                color: Colors.greenAccent.withValues(alpha: 0.6), width: 3),
+              color: Colors.greenAccent.withValues(alpha: 0.6),
+              width: 3,
+            ),
           ),
         ),
         padding: const EdgeInsets.all(20),
@@ -2290,7 +2746,9 @@ class _ConversionScreenState extends State<ConversionScreen> {
                             width: 16,
                             height: 16,
                             child: CircularProgressIndicator(
-                                strokeWidth: 2, color: Colors.white),
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
                           )
                         : const Icon(Icons.upload, size: 18),
                     label: Text(
@@ -2307,7 +2765,10 @@ class _ConversionScreenState extends State<ConversionScreen> {
               ('Size', '${sizeMb.toStringAsFixed(1)} MB'),
               ('Layers', '${r.layerCount}'),
               ('Profile', r.targetProfile.name),
-              ('Duration', '${(r.duration.inMilliseconds / 1000).toStringAsFixed(1)} s'),
+              (
+                'Duration',
+                '${(r.duration.inMilliseconds / 1000).toStringAsFixed(1)} s',
+              ),
             ]),
           ],
         ),
@@ -2321,7 +2782,9 @@ class _ConversionScreenState extends State<ConversionScreen> {
         decoration: BoxDecoration(
           border: Border(
             left: BorderSide(
-                color: Colors.red.withValues(alpha: 0.6), width: 3),
+              color: Colors.red.withValues(alpha: 0.6),
+              width: 3,
+            ),
           ),
         ),
         padding: const EdgeInsets.all(20),
@@ -2350,8 +2813,11 @@ class _ConversionScreenState extends State<ConversionScreen> {
           children: [
             Row(
               children: [
-                Icon(Icons.terminal,
-                    size: 18, color: Colors.white.withValues(alpha: 0.5)),
+                Icon(
+                  Icons.terminal,
+                  size: 18,
+                  color: Colors.white.withValues(alpha: 0.5),
+                ),
                 const SizedBox(width: 8),
                 Text(
                   'Log',
@@ -2459,8 +2925,10 @@ class _ProgressSectionState extends State<_ProgressSection> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(p.phase,
-                    style: const TextStyle(fontWeight: FontWeight.w500)),
+                Text(
+                  p.phase,
+                  style: const TextStyle(fontWeight: FontWeight.w500),
+                ),
                 Text(
                   '${(p.fraction * 100).toStringAsFixed(0)}%'
                   '${p.workers != null ? ' • ${p.workers} workers' : ''}',
@@ -2474,10 +2942,7 @@ class _ProgressSectionState extends State<_ProgressSection> {
             const SizedBox(height: 10),
             ClipRRect(
               borderRadius: BorderRadius.circular(4),
-              child: LinearProgressIndicator(
-                value: p.fraction,
-                minHeight: 6,
-              ),
+              child: LinearProgressIndicator(value: p.fraction, minHeight: 6),
             ),
             const SizedBox(height: 6),
             Text(
