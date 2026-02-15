@@ -121,7 +121,51 @@ class _ConversionScreenState extends State<ConversionScreen> {
     final client = NanoDlpClient(device);
     try {
       final profiles = await client.listResinProfiles();
-      final selectable = profiles.where((p) => !p.locked).toList();
+      var selectable = profiles.where((p) => !p.locked).toList();
+      
+      debugPrint('[ProfileFilter] Total profiles: ${selectable.length}');
+      
+      // Filter by layer height if we have file info
+      final ctbLayerHeightUm = (_fileInfo != null) 
+          ? (_fileInfo!.layerHeight * 1000).round() 
+          : null;
+      
+      if (ctbLayerHeightUm != null) {
+        debugPrint('[ProfileFilter] CTB layer height: ${ctbLayerHeightUm}µm');
+        
+        final matchingProfiles = selectable.where((p) {
+          // Try 1: Check Depth field (layer height in microns)
+          final depth = p.raw['Depth'] ?? p.raw['depth'];
+          if (depth != null) {
+            final profileDepthUm = (depth is int) ? depth : int.tryParse('$depth');
+            if (profileDepthUm != null && profileDepthUm == ctbLayerHeightUm) {
+              debugPrint('[ProfileFilter] ${p.name}: Depth=${profileDepthUm}µm ✓ MATCH');
+              return true;
+            }
+          }
+          
+          // Try 2: Parse layer height from profile name (e.g., "50μm" or "30µm")
+          final nameMatch = RegExp(r'(\d+)\s*[uµ]m', caseSensitive: false).firstMatch(p.name);
+          if (nameMatch != null) {
+            final nameLayerHeight = int.tryParse(nameMatch.group(1)!);
+            if (nameLayerHeight != null && nameLayerHeight == ctbLayerHeightUm) {
+              debugPrint('[ProfileFilter] ${p.name}: name contains ${nameLayerHeight}µm ✓ MATCH');
+              return true;
+            }
+          }
+          
+          debugPrint('[ProfileFilter] ${p.name}: Depth=$depth, no match');
+          return false;
+        }).toList();
+        
+        debugPrint('[ProfileFilter] Matching profiles: ${matchingProfiles.length}');
+        
+        // Only use filtered list if we found matches
+        if (matchingProfiles.isNotEmpty) {
+          selectable = matchingProfiles;
+        }
+      }
+      
       if (!mounted) return;
       setState(() {
         _resinProfiles = selectable;
@@ -714,11 +758,48 @@ class _ConversionScreenState extends State<ConversionScreen> {
     try {
       // Fetch resin profiles from the device
       final profiles = await client.listResinProfiles();
-      final selectable = profiles.where((p) => !p.locked).toList();
+      var selectable = profiles.where((p) => !p.locked).toList();
+      
+      // Filter by layer height if we have file info
+      final ctbLayerHeightUm = (_fileInfo != null) 
+          ? (_fileInfo!.layerHeight * 1000).round() 
+          : null;
+      if (ctbLayerHeightUm != null) {
+        final matchingProfiles = selectable.where((p) {
+          // Try 1: Check Depth field (layer height in microns)
+          final depth = p.raw['Depth'] ?? p.raw['depth'];
+          if (depth != null) {
+            final profileDepthUm = (depth is int) ? depth : int.tryParse('$depth');
+            if (profileDepthUm != null && profileDepthUm == ctbLayerHeightUm) {
+              return true;
+            }
+          }
+          
+          // Try 2: Parse layer height from profile name (e.g., "50μm" or "30µm")
+          final nameMatch = RegExp(r'(\d+)\s*[uµ]m', caseSensitive: false).firstMatch(p.name);
+          if (nameMatch != null) {
+            final nameLayerHeight = int.tryParse(nameMatch.group(1)!);
+            if (nameLayerHeight != null && nameLayerHeight == ctbLayerHeightUm) {
+              return true;
+            }
+          }
+          
+          return false;
+        }).toList();
+        
+        // Only use filtered list if we found matches
+        if (matchingProfiles.isNotEmpty) {
+          selectable = matchingProfiles;
+        }
+      }
+      
       if (selectable.isEmpty) {
         if (mounted) {
+          final msg = ctbLayerHeightUm != null
+              ? 'No material profiles found for ${ctbLayerHeightUm}µm layer height.'
+              : 'No material profiles found on device.';
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('No material profiles found on device.')),
+            SnackBar(content: Text(msg)),
           );
         }
         setState(() => _isUploading = false);
