@@ -55,6 +55,54 @@ class CtbToNanoDlpConverter {
     }
   }
 
+  /// Check for corrupt layers (fully black or fully white).
+  /// Samples up to 10 layers throughout the file.
+  /// Returns list of corrupt layer indices, or empty if file is OK.
+  Future<List<int>> checkForCorruptLayers(String ctbPath) async {
+    final parser = await CtbParser.open(ctbPath);
+    final corruptLayers = <int>[];
+    
+    try {
+      final totalLayers = parser.layerCount;
+      if (totalLayers == 0) return corruptLayers;
+      
+      // Sample layers: first, last, middle, and evenly spaced
+      final samplesToCheck = <int>{};
+      samplesToCheck.add(0); // First layer
+      if (totalLayers > 1) samplesToCheck.add(totalLayers - 1); // Last layer
+      if (totalLayers > 2) samplesToCheck.add(totalLayers ~/ 2); // Middle
+      
+      // Add evenly spaced samples (up to 10 total)
+      final step = (totalLayers / 10).ceil();
+      for (var i = 0; i < totalLayers && samplesToCheck.length < 10; i += step) {
+        samplesToCheck.add(i);
+      }
+      
+      for (final layerIdx in samplesToCheck) {
+        try {
+          final layerData = await parser.readLayerImage(layerIdx);
+          if (layerData.isEmpty) continue;
+          
+          // Check if all pixels are same value (0 = fully black, 255 = fully white)
+          final firstPixel = layerData[0];
+          if (firstPixel == 0 || firstPixel == 255) {
+            final allSame = layerData.every((pixel) => pixel == firstPixel);
+            if (allSame) {
+              corruptLayers.add(layerIdx);
+            }
+          }
+        } catch (_) {
+          // If we can't read a layer, consider it potentially corrupt
+          corruptLayers.add(layerIdx);
+        }
+      }
+    } finally {
+      await parser.close();
+    }
+    
+    return corruptLayers;
+  }
+
   /// Convert a CTB file to a NanoDLP plate file.
   ///
   /// The entire conversion runs in a background isolate. Only small

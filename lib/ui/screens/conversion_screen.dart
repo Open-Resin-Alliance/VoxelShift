@@ -528,6 +528,12 @@ class _ConversionScreenState extends State<ConversionScreen> {
 
       if (!mounted) return;
       Navigator.pop(context); // Close loading dialog
+      
+      // Check for corrupt layers
+      final corruptLayers = await _converter.checkForCorruptLayers(path);
+      if (corruptLayers.isNotEmpty && mounted) {
+        _showCorruptLayersWarning(corruptLayers, info.layerCount);
+      }
 
       debugPrint('[LoadFile] File loaded: ${info.resolutionX}x${info.resolutionY}');
       debugPrint('[LoadFile] Available profiles: ${profiles.map((p) => '${p.name} (${p.board})').join(', ')}');
@@ -2091,6 +2097,134 @@ class _ConversionScreenState extends State<ConversionScreen> {
             TextSpan(
               text: value,
               style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showCorruptLayersWarning(List<int> corruptLayers, int totalLayers) {
+    if (!mounted) return;
+    
+    final layerList = corruptLayers.take(10).map((i) => '#${i + 1}').join(', ');
+    final hasMore = corruptLayers.length > 10;
+    
+    showDialog(
+      context: context,
+      builder: (ctx) => _buildCardDialog(
+        width: 520,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: Colors.orange.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: Colors.orange.withValues(alpha: 0.35),
+                    ),
+                  ),
+                  child: const Icon(Icons.warning_amber_rounded,
+                      color: Colors.orange, size: 20),
+                ),
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Text(
+                    'Possible File Corruption',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Detected ${corruptLayers.length} layer(s) that appear fully black or fully white, which may indicate a corrupt CTB file:',
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.85),
+                fontSize: 13,
+              ),
+            ),
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFF0F172A),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: Colors.orange.withValues(alpha: 0.3),
+                ),
+              ),
+              child: Text(
+                '$layerList${hasMore ? ', ...' : ''}',
+                style: TextStyle(
+                  color: Colors.orange.withValues(alpha: 0.9),
+                  fontSize: 12,
+                  fontFamily: 'monospace',
+                ),
+              ),
+            ),
+            const SizedBox(height: 14),
+            Text(
+              'This could be caused by:',
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.7),
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 6),
+            ...['Incomplete file download', 'Transfer errors', 'Slicer software issues', 'Corrupted support structures']
+                .map((reason) => Padding(
+                      padding: const EdgeInsets.only(left: 8, top: 4),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '• ',
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.6),
+                              fontSize: 12,
+                            ),
+                          ),
+                          Expanded(
+                            child: Text(
+                              reason,
+                              style: TextStyle(
+                                color: Colors.white.withValues(alpha: 0.6),
+                                fontSize: 12,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    )),
+            const SizedBox(height: 16),
+            Text(
+              'You can proceed with conversion, but the print may fail or have defects.',
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.7),
+                fontSize: 12,
+                fontStyle: FontStyle.italic,
+              ),
+            ),
+            const SizedBox(height: 18),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                ElevatedButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('OK'),
+                ),
+              ],
             ),
           ],
         ),
