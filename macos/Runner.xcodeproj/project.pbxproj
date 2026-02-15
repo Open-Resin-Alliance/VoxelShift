@@ -307,7 +307,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "echo \"$PRODUCT_NAME.app\" > \"$PROJECT_DIR\"/Flutter/ephemeral/.app_filename && \"$FLUTTER_ROOT\"/packages/flutter_tools/bin/macos_assemble.sh embed\n";
+			shellScript = "echo \"$PRODUCT_NAME.app\" > \"$PROJECT_DIR\"/Flutter/ephemeral/.app_filename && \"$FLUTTER_ROOT\"/packages/flutter_tools/bin/macos_assemble.sh embed\n\nSRC_AREA=\"$PROJECT_DIR/../native/area_stats.c\"\nSRC_RLE=\"$PROJECT_DIR/../native/rle_decode.c\"\nSRC_PNG=\"$PROJECT_DIR/../native/png_encode.c\"\nSRC_RECOMP=\"$PROJECT_DIR/../native/png_recompress.c\"\nSRC_PIPE=\"$PROJECT_DIR/../native/layer_pipeline.c\"\nSRC_ZIP=\"$PROJECT_DIR/../native/zip_writer.c\"\nOUT_DIR=\"$BUILT_PRODUCTS_DIR/$CONTENTS_FOLDER_PATH/Frameworks\"\nOUT_LIB=\"$OUT_DIR/libarea_stats.dylib\"\nmkdir -p \"$OUT_DIR\"\nclang -dynamiclib -O3 -fPIC -o \"$OUT_LIB\" \"$SRC_AREA\" \"$SRC_RLE\" \"$SRC_PNG\" \"$SRC_RECOMP\" \"$SRC_PIPE\" \"$SRC_ZIP\"\n";
 		};
 		33CC111E2044C6BF0003C045 /* ShellScript */ = {
 			isa = PBXShellScriptBuildPhase;

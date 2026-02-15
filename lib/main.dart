@@ -10,30 +10,49 @@ import 'ui/screens/conversion_screen.dart';
 import 'ui/screens/network_screen.dart';
 import 'ui/screens/onboarding_screen.dart';
 import 'ui/screens/post_processor_screen.dart';
+import 'ui/screens/settings_screen.dart';
+
+class _CliOptions {
+  final bool help;
+  final String? filePath;
+  final List<String> unknownArgs;
+
+  const _CliOptions({
+    required this.help,
+    required this.filePath,
+    required this.unknownArgs,
+  });
+}
 
 Future<void> main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  final cli = _parseCliArgs(args);
+  if (cli.help) {
+    await _printCliHelp();
+    exit(0);
+  }
+
+  if (cli.unknownArgs.isNotEmpty) {
+    print('[Main] Unknown args ignored: ${cli.unknownArgs.join(' ')}');
+  }
+
   // Check for file from environment variable (for slicer post-processing)
   final envFile = Platform.environment['VOXELSHIFT_FILE'];
-  
+
   String? postProcessorFile;
   if (envFile != null && envFile.isNotEmpty) {
     postProcessorFile = envFile;
-    debugPrint('[Main] Post-processor mode (env): $postProcessorFile');
+    print('[Main] Post-processor mode (env): $postProcessorFile');
+  } else if (cli.filePath != null && cli.filePath!.isNotEmpty) {
+    postProcessorFile = cli.filePath;
+    print('[Main] Post-processor mode (args): $postProcessorFile');
   } else if (args.isNotEmpty) {
-    // Check command-line arguments (for drag-and-drop or direct invocation)
-    final fileArg = args.firstWhere(
-      (arg) => !arg.startsWith('-') && File(arg).existsSync(),
-      orElse: () => '',
-    );
-    if (fileArg.isNotEmpty) {
-      postProcessorFile = fileArg;
-      debugPrint('[Main] Post-processor mode (args): $postProcessorFile');
-    } else {
-      debugPrint('[Main] Command-line args: $args');
-    }
+    print('[Main] Command-line args: $args');
   }
-  
+
+  print('[Main] Startup complete.');
+
   if (postProcessorFile != null && (Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
     await windowManager.ensureInitialized();
     const windowOptions = WindowOptions(
@@ -54,6 +73,85 @@ Future<void> main(List<String> args) async {
   }
 
   runApp(VoxelShiftApp(postProcessorFile: postProcessorFile));
+}
+
+_CliOptions _parseCliArgs(List<String> args) {
+  bool help = false;
+  String? filePath;
+  final unknown = <String>[];
+
+  for (int i = 0; i < args.length; i++) {
+    final arg = args[i].trim();
+    if (arg.isEmpty) continue;
+
+    if (arg == '-h' || arg == '--help') {
+      help = true;
+      continue;
+    }
+
+    if (arg == '--file' || arg == '-f') {
+      if (i + 1 < args.length) {
+        filePath = args[++i];
+      } else {
+        unknown.add(arg);
+      }
+      continue;
+    }
+
+    if (arg.startsWith('--file=')) {
+      final v = arg.substring('--file='.length).trim();
+      if (v.isNotEmpty) filePath = v;
+      continue;
+    }
+
+    if (!arg.startsWith('-') && filePath == null) {
+      filePath = arg;
+      continue;
+    }
+
+    unknown.add(arg);
+  }
+
+  if (filePath != null) {
+    final f = File(filePath);
+    if (!f.existsSync()) {
+      print('[Main] Warning: file does not exist: $filePath');
+    }
+  }
+
+  return _CliOptions(help: help, filePath: filePath, unknownArgs: unknown);
+}
+
+Future<void> _printCliHelp() async {
+  stdout.writeln('''
+VoxelShift CLI
+
+Usage:
+  voxelshift.exe [options] [file.ctb]
+
+Options:
+  -h, --help              Show this help and exit.
+  -f, --file <path>       Input file path (CTB/CBDDLP/Photon).
+
+Windows runner options:
+  --attach-console        Force attach/create console for stdout logs.
+  --new-console           Force create a new console window.
+
+Examples:
+  voxelshift.exe -h
+  voxelshift.exe large_test.ctb
+  voxelshift.exe --file "C:\\prints\\large_test.ctb"
+  voxelshift.exe --attach-console --file "C:\\prints\\large_test.ctb"
+
+Environment variables:
+  VOXELSHIFT_FILE=<path>            Alternative way to pass input file.
+  VOXELSHIFT_GPU_MODE=auto|cpu|gpu
+  VOXELSHIFT_AUTOTUNE=0|1
+  VOXELSHIFT_GPU_BACKEND=auto|opencl|cuda|tensor|metal
+  VOXELSHIFT_CPU_HOST_WORKERS=<N>
+  VOXELSHIFT_GPU_HOST_WORKERS=<N>
+''');
+  await stdout.flush();
 }
 
 class VoxelShiftApp extends StatelessWidget {
@@ -341,6 +439,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
             activeDevice: _activeDevice,
             onSetActiveDevice: _setActiveDevice,
           ),
+          const SettingsScreen(),
         ],
       ),
       bottomNavigationBar: NavigationBar(
@@ -357,6 +456,11 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
             icon: Icon(Icons.wifi),
             selectedIcon: Icon(Icons.wifi),
             label: 'Network',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.settings),
+            selectedIcon: Icon(Icons.settings),
+            label: 'Settings',
           ),
         ],
       ),

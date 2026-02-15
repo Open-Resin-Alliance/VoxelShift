@@ -3,6 +3,7 @@ import 'dart:isolate';
 import 'dart:typed_data';
 
 import '../models/models.dart';
+import '../network/app_settings.dart';
 import 'conversion_worker.dart';
 import 'ctb_parser.dart';
 import 'thumbnail_processor.dart';
@@ -62,6 +63,7 @@ class CtbToNanoDlpConverter {
   }) async {
     options ??= ConversionOptions();
     final receivePort = ReceivePort();
+    final settings = await AppSettings.load();
     final completer = Completer<ConversionResult>();
 
     receivePort.listen((message) {
@@ -71,6 +73,10 @@ class CtbToNanoDlpConverter {
                 workers: message.workers));
       } else if (message is WorkerLog) {
         _log(message.text);
+      } else if (message is WorkerBenchmarkUpdate) {
+        settings.benchmarkCache[message.key] =
+            BenchmarkCacheEntry.fromJson(Map<String, dynamic>.from(message.entry));
+        settings.save();
       } else if (message is WorkerDone) {
         completer.complete(message.result);
         receivePort.close();
@@ -85,6 +91,10 @@ class CtbToNanoDlpConverter {
         maxZHeightOverride: options.maxZHeightOverride,
         outputDirectory: options.outputDirectory,
         outputFileName: options.outputFileName,
+        postProcessingSettings: settings.postProcessing.toJson(),
+        benchmarkCache: settings.benchmarkCache.map(
+          (key, value) => MapEntry(key, value.toJson()),
+        ),
         sendPort: receivePort.sendPort,
       ),
     );

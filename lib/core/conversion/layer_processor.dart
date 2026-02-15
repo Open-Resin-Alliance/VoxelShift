@@ -6,6 +6,11 @@ import 'dart:typed_data';
 
 import '../models/board_type.dart';
 import '../models/layer_area_info.dart';
+import 'native_area_stats.dart';
+import 'native_png_encode.dart';
+import 'native_png_recompress.dart';
+import 'native_rle_decode.dart';
+import 'native_thread_priority.dart';
 
 /// Parameters for processing a single layer in a worker isolate.
 ///
@@ -50,18 +55,212 @@ class LayerResult {
   });
 }
 
-/// Optimal worker count based on available CPU cores.
-int get defaultWorkerCount =>
-  math.max(2, (Platform.numberOfProcessors / 2).floor()).clamp(2, 6);
+class _RecompressChunkTask {
+  final int startIndex;
+  final List<Uint8List> pngs;
+  final int level;
 
-/// Run a single layer in a sub-isolate.
-///
-/// MUST be a top-level function so the closure passed to [Isolate.run] only
-/// captures [task] (which is fully sendable).  If this were a nested closure
-/// inside [processLayersParallel], it would inadvertently capture the
-/// enclosing scope's [Completer] and other unsendable objects.
-Future<LayerResult> _processInSubIsolate(LayerTaskParams task) {
-  return Isolate.run(() => processLayerSync(task));
+  const _RecompressChunkTask({
+    required this.startIndex,
+    required this.pngs,
+    required this.level,
+  });
+}
+
+class _RecompressChunkResult {
+  final int startIndex;
+  final List<Uint8List> outputs;
+
+  const _RecompressChunkResult({
+    required this.startIndex,
+    required this.outputs,
+  });
+}
+
+class _RecompressChunkSpawnParams {
+  final _RecompressChunkTask task;
+  final SendPort sendPort;
+
+  const _RecompressChunkSpawnParams({
+    required this.task,
+    required this.sendPort,
+  });
+}
+
+class _ProcessChunkTask {
+  final int startIndex;
+  final List<LayerTaskParams> tasks;
+
+  const _ProcessChunkTask({
+    required this.startIndex,
+    required this.tasks,
+  });
+}
+
+class _ProcessChunkResult {
+  final int startIndex;
+  final List<LayerResult> results;
+
+  const _ProcessChunkResult({
+    required this.startIndex,
+    required this.results,
+  });
+}
+
+class _ProcessChunkSpawnParams {
+  final _ProcessChunkTask task;
+  final SendPort sendPort;
+
+  const _ProcessChunkSpawnParams({
+    required this.task,
+    required this.sendPort,
+  });
+}
+
+/// Optimal worker count based on available CPU cores.
+int get defaultWorkerCount {
+  final cores = Platform.numberOfProcessors;
+  // Use ~75% of logical cores for conversion workers and keep headroom
+  // for UI, filesystem, and native zlib threads.
+  return (cores * 0.75).floor().clamp(2, 12);
+}
+
+/// Human-readable summary of which native accelerators are active.
+String getProcessingEngineLabel() {
+  final allNative = NativeRleDecode.instance.available &&
+      NativeAreaStats.instance.available &&
+      NativePngEncode.instance.available;
+  return allNative ? 'Native Mode' : 'Dart Mode';
+}
+
+void _processChunkEntry(_ProcessChunkSpawnParams params) {
+  // Hint OS scheduler to favor UI thread responsiveness under high worker load.
+  NativeThreadPriority.instance.setBackgroundPriority(true);
+
+  final task = params.task;
+  final out = <LayerResult>[];
+  final len = task.tasks.length;
+  final feedbackStride = len <= 8
+      ? 1
+      : len <= 24
+          ? 2
+          : len <= 48
+              ? 4
+              : 8;
+
+  for (int i = 0; i < len; i++) {
+    out.add(processLayerSync(task.tasks[i]));
+
+    // Emit lightweight incremental progress for smoother UI-side feedback.
+    final done = i + 1;
+    if ((done % feedbackStride) == 0 || done == len) {
+      params.sendPort.send(done);
+    }
+  }
+
+  params.sendPort.send(
+    _ProcessChunkResult(startIndex: task.startIndex, results: out),
+  );
+}
+
+Future<_ProcessChunkResult> _processChunkInSubIsolate(
+  _ProcessChunkTask task, {
+  void Function(int processed)? onProgress,
+}) async {
+  final receivePort = ReceivePort();
+  final completer = Completer<_ProcessChunkResult>();
+
+  receivePort.listen((message) {
+    if (message is int) {
+      onProgress?.call(message);
+      return;
+    }
+
+    if (message is _ProcessChunkResult) {
+      if (!completer.isCompleted) completer.complete(message);
+      receivePort.close();
+    }
+  });
+
+  await Isolate.spawn(
+    _processChunkEntry,
+    _ProcessChunkSpawnParams(task: task, sendPort: receivePort.sendPort),
+  );
+
+  return completer.future;
+}
+
+void _recompressChunkEntry(_RecompressChunkSpawnParams params) {
+  // Hint OS scheduler to favor UI thread responsiveness under high worker load.
+  NativeThreadPriority.instance.setBackgroundPriority(true);
+
+  final task = params.task;
+  final len = task.pngs.length;
+  final feedbackStride = len <= 8
+      ? 1
+      : len <= 24
+          ? 2
+          : len <= 48
+              ? 4
+              : 8;
+
+  final batch = NativePngRecompress.instance.recompressBatch(
+    task.pngs,
+    level: task.level,
+  );
+
+  if (batch != null && batch.length == len) {
+    for (int i = 0; i < len; i++) {
+      final done = i + 1;
+      if ((done % feedbackStride) == 0 || done == len) {
+        params.sendPort.send(done);
+      }
+    }
+    params.sendPort.send(
+      _RecompressChunkResult(startIndex: task.startIndex, outputs: batch),
+    );
+    return;
+  }
+
+  final out = <Uint8List>[];
+  for (int i = 0; i < len; i++) {
+    out.add(recompressPng(task.pngs[i]));
+    final done = i + 1;
+    if ((done % feedbackStride) == 0 || done == len) {
+      params.sendPort.send(done);
+    }
+  }
+
+  params.sendPort.send(
+    _RecompressChunkResult(startIndex: task.startIndex, outputs: out),
+  );
+}
+
+Future<_RecompressChunkResult> _recompressChunkInSubIsolate(
+  _RecompressChunkTask task, {
+  void Function(int processed)? onProgress,
+}) async {
+  final receivePort = ReceivePort();
+  final completer = Completer<_RecompressChunkResult>();
+
+  receivePort.listen((message) {
+    if (message is int) {
+      onProgress?.call(message);
+      return;
+    }
+
+    if (message is _RecompressChunkResult) {
+      if (!completer.isCompleted) completer.complete(message);
+      receivePort.close();
+    }
+  });
+
+  await Isolate.spawn(
+    _recompressChunkEntry,
+    _RecompressChunkSpawnParams(task: task, sendPort: receivePort.sendPort),
+  );
+
+  return completer.future;
 }
 
 /// Process layers in parallel with true N-way concurrency.
@@ -71,9 +270,9 @@ Future<LayerResult> _processInSubIsolate(LayerTaskParams task) {
 /// — no serial await bottleneck.
 ///
 /// Concurrency is scaled based on layer count:
-///   • Small files (< 100 layers):   3 concurrent compute() calls
-///   • Medium files (100-500 layers): 5 concurrent
-///   • Large files (> 500 layers):    8 concurrent
+///   • Small files (< 100 layers):     3 concurrent compute() calls
+///   • Medium files (100-500 layers):  8 concurrent
+///   • Large files (> 500 layers):    12 concurrent
 ///
 /// Progress callbacks are debounced to 250ms intervals.
 Future<List<LayerResult>> processLayersParallel({
@@ -86,19 +285,37 @@ Future<List<LayerResult>> processLayersParallel({
 
   // Adaptive concurrency: scale based on layer count
     final baseConcurrency = tasks.length < 100
-      ? 2
+      ? 3
       : tasks.length < 500
-        ? 4
-        : 6;
+        ? 8
+        : 12;
 
   final concurrencyLimit =
       math.min(baseConcurrency, math.max(1, maxConcurrency));
 
   onWorkersReady?.call(concurrencyLimit);
+    onLayerComplete?.call(0, tasks.length);
+
+      // Strong chunking to reduce isolate spawn churn during processing.
+      // This keeps throughput high while leaving more scheduler headroom for UI.
+      final targetWavesPerWorker = tasks.length < 300
+        ? 3
+        : tasks.length < 1200
+          ? 2
+          : 2;
+    final computedChunkSize =
+      (tasks.length / (concurrencyLimit * targetWavesPerWorker)).ceil();
+      final chunkSize = math.max(12, math.min(64, computedChunkSize));
+
+  final chunks = <_ProcessChunkTask>[];
+  for (int start = 0; start < tasks.length; start += chunkSize) {
+    final end = math.min(start + chunkSize, tasks.length);
+    chunks.add(_ProcessChunkTask(startIndex: start, tasks: tasks.sublist(start, end)));
+  }
 
   final results = List<LayerResult?>.filled(tasks.length, null);
   int completedCount = 0;
-  int nextTask = 0;
+  int nextChunk = 0;
   DateTime lastReportTime = DateTime.now();
   const reportIntervalMs = 250;
 
@@ -107,13 +324,37 @@ Future<List<LayerResult>> processLayersParallel({
   /// Launch exactly one compute() call. When it finishes, it backfills
   /// the slot by calling launchOne() again.
   void launchOne() {
-    if (nextTask >= tasks.length || completer.isCompleted) return;
+    if (nextChunk >= chunks.length || completer.isCompleted) return;
 
-    final taskIdx = nextTask++;
+    final chunk = chunks[nextChunk++];
+    int chunkProgressCount = 0;
 
-    _processInSubIsolate(tasks[taskIdx]).then((result) {
-      results[result.layerIndex] = result;
-      completedCount++;
+    _processChunkInSubIsolate(
+      chunk,
+      onProgress: (processed) {
+        final delta = processed - chunkProgressCount;
+        if (delta <= 0) return;
+
+        chunkProgressCount = processed;
+        completedCount += delta;
+
+        final now = DateTime.now();
+        if (now.difference(lastReportTime).inMilliseconds >= reportIntervalMs ||
+            completedCount == tasks.length) {
+          onLayerComplete?.call(completedCount, tasks.length);
+          lastReportTime = now;
+        }
+      },
+    ).then((chunkResult) {
+      for (final result in chunkResult.results) {
+        results[result.layerIndex] = result;
+      }
+
+      // Guard against missed final progress messages.
+      final missing = chunkResult.results.length - chunkProgressCount;
+      if (missing > 0) {
+        completedCount += missing;
+      }
 
       // Debounced progress reporting
       final now = DateTime.now();
@@ -164,6 +405,7 @@ Future<List<LayerResult>> processLayersParallel({
 /// directly in any isolate (background worker, compute(), etc.).
 LayerResult processLayerSync(LayerTaskParams p) {
   final pixelCount = p.resolutionX * p.resolutionY;
+  final boardType = BoardType.values[p.boardTypeIndex];
 
   // 1. Early detection: if RLE data is < 100 bytes, layer is almost certainly blank
   //    (A full-resolution real layer is typically >100KB even with aggressive compression)
@@ -175,30 +417,116 @@ LayerResult processLayerSync(LayerTaskParams p) {
     );
   }
 
-  // 2. Decrypt
-  final decrypted =
-      _decryptLayerData(p.rawRleData, p.layerIndex, p.encryptionKey);
-
-  // 3. RLE decode
-  final greyPixels = _decodeRle(decrypted, pixelCount);
-
-  // 4. Area statistics
-  final areaInfo = _computeLayerArea(
-    greyPixels, p.resolutionX, p.resolutionY,
-    p.xPixelSizeMm, p.yPixelSizeMm,
+  // 2+3+5. Merged native path: decrypt + decode + build scanlines in one call.
+  final outWidth = p.targetWidth ??
+      (boardType == BoardType.rgb8Bit ? (p.resolutionX ~/ 3) : (p.resolutionX ~/ 2));
+  final channels = boardType == BoardType.rgb8Bit ? 3 : 1;
+  final fused = NativePngEncode.instance.decodeBuildScanlinesAndArea(
+    p.rawRleData,
+    p.layerIndex,
+    p.encryptionKey,
+    p.resolutionX,
+    p.resolutionY,
+    outWidth,
+    channels,
+    p.xPixelSizeMm,
+    p.yPixelSizeMm,
   );
 
-  // 5. PNG encode (custom fast encoder — no image package)
-  final boardType = BoardType.values[p.boardTypeIndex];
-  final pngBytes = _encodeToPng(
-    greyPixels, p.resolutionX, p.resolutionY,
-    boardType, p.targetWidth, p.pngLevel,
-  );
+  late final Uint8List greyPixels;
+  late final Uint8List pngBytes;
+  late final LayerAreaInfo areaInfo;
+
+  if (fused != null) {
+    areaInfo = fused.areaInfo;
+    pngBytes = _encodeScanlinesToPng(
+      fused.scanlines,
+      outWidth,
+      p.resolutionY,
+      boardType == BoardType.rgb8Bit ? 2 : 0,
+      p.pngLevel,
+    );
+    greyPixels = Uint8List(0); // Not used in fused path.
+  } else {
+    final merged = NativePngEncode.instance.decodeAndBuildScanlines(
+      p.rawRleData,
+      p.layerIndex,
+      p.encryptionKey,
+      p.resolutionX,
+      p.resolutionY,
+      outWidth,
+      channels,
+    );
+
+    if (merged != null) {
+    greyPixels = merged.greyPixels;
+    pngBytes = _encodeScanlinesToPng(
+      merged.scanlines,
+      outWidth,
+      p.resolutionY,
+      boardType == BoardType.rgb8Bit ? 2 : 0,
+      p.pngLevel,
+    );
+    areaInfo = _computeLayerArea(
+      greyPixels,
+      p.resolutionX,
+      p.resolutionY,
+      p.xPixelSizeMm,
+      p.yPixelSizeMm,
+    );
+    } else {
+    // 2+3. Decrypt + RLE decode (native fast path with Dart fallback)
+    greyPixels = NativeRleDecode.instance.decryptAndDecode(
+          p.rawRleData,
+          p.layerIndex,
+          p.encryptionKey,
+          pixelCount,
+        ) ??
+        _decodeRle(
+          _decryptLayerData(p.rawRleData, p.layerIndex, p.encryptionKey),
+          pixelCount,
+        );
+
+    // 5. PNG encode (custom fast encoder — no image package)
+    pngBytes = _encodeToPng(
+      greyPixels,
+      p.resolutionX,
+      p.resolutionY,
+      boardType,
+      p.targetWidth,
+      p.pngLevel,
+    );
+    areaInfo = _computeLayerArea(
+      greyPixels,
+      p.resolutionX,
+      p.resolutionY,
+      p.xPixelSizeMm,
+      p.yPixelSizeMm,
+    );
+    }
+  }
 
   return LayerResult(
     layerIndex: p.layerIndex,
     pngBytes: pngBytes,
     areaInfo: areaInfo,
+  );
+}
+
+Uint8List _encodeScanlinesToPng(
+  Uint8List scanlines,
+  int width,
+  int height,
+  int colorType,
+  int level,
+) {
+  final compressed = ZLibEncoder(level: level).convert(scanlines);
+  return _buildPngFile(
+    width,
+    height,
+    colorType,
+    8,
+    compressed is Uint8List ? compressed : Uint8List.fromList(compressed),
   );
 }
 
@@ -286,6 +614,17 @@ LayerAreaInfo _computeLayerArea(
   double xPixelSizeMm,
   double yPixelSizeMm,
 ) {
+  final nativeResult = NativeAreaStats.instance.compute(
+    greyPixels,
+    width,
+    height,
+    xPixelSizeMm,
+    yPixelSizeMm,
+  );
+  if (nativeResult != null) {
+    return nativeResult;
+  }
+
   final pixelCount = width * height;
   final visited = Uint32List((pixelCount + 31) >> 5);
   
@@ -461,52 +800,49 @@ Uint8List _encodePngRgb(
   int level,
 ) {
   final outWidth = targetWidth ?? (srcWidth ~/ 3);
-  final requiredSubpixels = outWidth * 3;
-  final padTotal = requiredSubpixels - srcWidth;
-  final padLeft = padTotal > 0 ? padTotal ~/ 2 : 0;
-
   final bytesPerRow = outWidth * 3;
   final scanlineSize = 1 + bytesPerRow; // filter byte + pixel data
-  final scanlines = Uint8List(scanlineSize * height);
+  final scanlines = NativePngEncode.instance
+          .buildRgbScanlines(greyPixels, srcWidth, height, outWidth) ??
+      (() {
+        final requiredSubpixels = outWidth * 3;
+        final padTotal = requiredSubpixels - srcWidth;
+        final padLeft = padTotal > 0 ? padTotal ~/ 2 : 0;
+        final fallback = Uint8List(scanlineSize * height);
 
-  if (padTotal == 0) {
-    // ── Fast path ───────────────────────────────────────────
-    // Source greyscale bytes ARE the RGB bytes in order.
-    // Just prepend a filter byte per row. One setRange per row
-    // instead of 5040 × setPixelRgb per row.
-    for (int y = 0; y < height; y++) {
-      final dstRow = y * scanlineSize;
-      // scanlines[dstRow] already 0 (placeholder for Up filter)
-      scanlines.setRange(
-          dstRow + 1, dstRow + 1 + bytesPerRow, greyPixels, y * srcWidth);
-    }
-  } else {
-    // ── Padding path ────────────────────────────────────────
-    int dst = 0;
-    for (int y = 0; y < height; y++) {
-      dst++; // skip filter byte placeholder
-      final rowOffset = y * srcWidth;
-      for (int x = 0; x < outWidth; x++) {
-        final si = x * 3 - padLeft;
-        scanlines[dst++] =
-            (si >= 0 && si < srcWidth) ? greyPixels[rowOffset + si] : 0;
-        scanlines[dst++] = (si + 1 >= 0 && si + 1 < srcWidth)
-            ? greyPixels[rowOffset + si + 1]
-            : 0;
-        scanlines[dst++] = (si + 2 >= 0 && si + 2 < srcWidth)
-            ? greyPixels[rowOffset + si + 2]
-            : 0;
-      }
-    }
-  }
+        if (padTotal == 0) {
+          // ── Fast path ─────────────────────────────────────
+          for (int y = 0; y < height; y++) {
+            final dstRow = y * scanlineSize;
+            fallback.setRange(
+                dstRow + 1, dstRow + 1 + bytesPerRow, greyPixels, y * srcWidth);
+          }
+        } else {
+          // ── Padding path ──────────────────────────────────
+          int dst = 0;
+          for (int y = 0; y < height; y++) {
+            dst++;
+            final rowOffset = y * srcWidth;
+            for (int x = 0; x < outWidth; x++) {
+              final si = x * 3 - padLeft;
+              fallback[dst++] =
+                  (si >= 0 && si < srcWidth) ? greyPixels[rowOffset + si] : 0;
+              fallback[dst++] = (si + 1 >= 0 && si + 1 < srcWidth)
+                  ? greyPixels[rowOffset + si + 1]
+                  : 0;
+              fallback[dst++] = (si + 2 >= 0 && si + 2 < srcWidth)
+                  ? greyPixels[rowOffset + si + 2]
+                  : 0;
+            }
+          }
+        }
 
-  // Apply Up filter in-place, then compress with native zlib
-  _applyUpFilter(scanlines, height, scanlineSize, bytesPerRow);
-  final compressed = ZLibEncoder(level: level).convert(scanlines);
+        _applyUpFilter(fallback, height, scanlineSize, bytesPerRow);
+        return fallback;
+      })();
 
   // colorType = 2 (RGB), bitDepth = 8
-  return _buildPngFile(outWidth, height, 2, 8,
-      compressed is Uint8List ? compressed : Uint8List.fromList(compressed));
+  return _encodeScanlinesToPng(scanlines, outWidth, height, 2, level);
 }
 
 /// Encode greyscale subpixels as an 8-bit greyscale PNG (3-bit driver).
@@ -521,35 +857,35 @@ Uint8List _encodePngGreyscale(
   int level,
 ) {
   final outWidth = targetWidth ?? (srcWidth ~/ 2);
-  final requiredSubpixels = outWidth * 2;
-  final padTotal = requiredSubpixels - srcWidth;
-  final padLeft = padTotal > 0 ? padTotal ~/ 2 : 0;
-
   final bytesPerRow = outWidth; // 1 byte per greyscale pixel
   final scanlineSize = 1 + bytesPerRow; // filter byte + pixel data
-  final scanlines = Uint8List(scanlineSize * height);
+  final scanlines = NativePngEncode.instance
+          .buildGreyscaleScanlines(greyPixels, srcWidth, height, outWidth) ??
+      (() {
+        final requiredSubpixels = outWidth * 2;
+        final padTotal = requiredSubpixels - srcWidth;
+        final padLeft = padTotal > 0 ? padTotal ~/ 2 : 0;
+        final fallback = Uint8List(scanlineSize * height);
 
-  for (int y = 0; y < height; y++) {
-    final dstRow = y * scanlineSize;
-    final rowOffset = y * srcWidth;
-    // scanlines[dstRow] = 0 (filter byte placeholder for Up filter)
-    for (int x = 0; x < outWidth; x++) {
-      final si = x * 2 - padLeft;
-      final a = (si >= 0 && si < srcWidth) ? greyPixels[rowOffset + si] : 0;
-      final b = (si + 1 >= 0 && si + 1 < srcWidth)
-          ? greyPixels[rowOffset + si + 1]
-          : 0;
-      scanlines[dstRow + 1 + x] = ((a + b) >> 1); // average of 2 subpixels
-    }
-  }
+        for (int y = 0; y < height; y++) {
+          final dstRow = y * scanlineSize;
+          final rowOffset = y * srcWidth;
+          for (int x = 0; x < outWidth; x++) {
+            final si = x * 2 - padLeft;
+            final a = (si >= 0 && si < srcWidth) ? greyPixels[rowOffset + si] : 0;
+            final b = (si + 1 >= 0 && si + 1 < srcWidth)
+                ? greyPixels[rowOffset + si + 1]
+                : 0;
+            fallback[dstRow + 1 + x] = ((a + b) >> 1);
+          }
+        }
 
-  // Apply Up filter in-place, then compress with native zlib
-  _applyUpFilter(scanlines, height, scanlineSize, bytesPerRow);
-  final compressed = ZLibEncoder(level: level).convert(scanlines);
+        _applyUpFilter(fallback, height, scanlineSize, bytesPerRow);
+        return fallback;
+      })();
 
   // colorType = 0 (Greyscale), bitDepth = 8
-  return _buildPngFile(outWidth, height, 0, 8,
-      compressed is Uint8List ? compressed : Uint8List.fromList(compressed));
+  return _encodeScanlinesToPng(scanlines, outWidth, height, 0, level);
 }
 
 // ── PNG recompression (level 1 → level 9) ──────────────────
@@ -560,7 +896,13 @@ Uint8List _encodePngGreyscale(
 /// decompresses the IDAT payload, then recompresses at max level.
 /// Returns the rebuilt PNG. If anything goes wrong, returns the
 /// original bytes unchanged.
-Uint8List recompressPng(Uint8List pngBytes) {
+Uint8List recompressPng(Uint8List pngBytes, {int level = 7}) {
+  final safeLevel = level.clamp(0, 9);
+  final native = NativePngRecompress.instance.recompress(pngBytes, level: safeLevel);
+  if (native != null) {
+    return native;
+  }
+
   try {
     if (pngBytes.length < 45) return pngBytes;
 
@@ -603,7 +945,7 @@ Uint8List recompressPng(Uint8List pngBytes) {
     final compressedData = idatBytes.takeBytes();
     final scanlines = ZLibDecoder().convert(compressedData);
 
-    final recompressed = ZLibEncoder(level: 9).convert(scanlines);
+    final recompressed = ZLibEncoder(level: safeLevel).convert(scanlines);
     final newIdat = recompressed is Uint8List
         ? recompressed
         : Uint8List.fromList(recompressed);
@@ -629,12 +971,91 @@ Future<List<Uint8List>> recompressPngsParallel({
 }) async {
   if (pngs.isEmpty) return [];
 
+  final nativeBatch = NativePngRecompress.instance.batchAvailable;
+  if (nativeBatch) {
+    final nativeThreads = math.min(
+      pngs.length,
+      math.max(1, maxConcurrency),
+    );
+
+    final recompressLevelEnv = int.tryParse(
+      (Platform.environment['VOXELSHIFT_RECOMPRESS_LEVEL'] ?? '').trim(),
+    );
+    final defaultLevel = pngs.length >= 1200
+      ? 4
+      : pngs.length >= 500
+        ? 5
+        : 7;
+    final recompressLevel =
+      (recompressLevelEnv == null ? defaultLevel : recompressLevelEnv.clamp(0, 9));
+
+    // Native recompress now owns multithreading internally.
+    NativePngRecompress.instance.setBatchThreads(nativeThreads);
+
+    onWorkersReady?.call(nativeThreads);
+    onProgress?.call(0, pngs.length);
+
+    final chunkOverride = int.tryParse(
+      (Platform.environment['VOXELSHIFT_RECOMPRESS_CHUNKS'] ?? '').trim(),
+    );
+    final targetChunks = (chunkOverride == null || chunkOverride <= 0)
+        ? (pngs.length < 256
+            ? 2
+            : pngs.length < 800
+                ? 4
+                : 8)
+        : chunkOverride;
+    final chunkCount = targetChunks.clamp(1, pngs.length);
+    final chunkSize = (pngs.length / chunkCount).ceil();
+
+    final out = List<Uint8List>.filled(pngs.length, Uint8List(0), growable: false);
+    int completed = 0;
+
+    for (int start = 0; start < pngs.length; start += chunkSize) {
+      final end = math.min(start + chunkSize, pngs.length);
+      final chunk = pngs.sublist(start, end);
+
+      final result = NativePngRecompress.instance.recompressBatch(
+        chunk,
+        level: recompressLevel,
+      );
+
+      if (result == null || result.length != chunk.length) {
+        // If native chunk fails, preserve correctness by copying originals.
+        for (int i = 0; i < chunk.length; i++) {
+          out[start + i] = chunk[i];
+        }
+      } else {
+        for (int i = 0; i < result.length; i++) {
+          out[start + i] = result[i];
+        }
+      }
+
+      completed = end;
+      onProgress?.call(completed, pngs.length);
+    }
+
+    return out;
+  }
+
   final concurrency = math.min(
-    pngs.length < 100 ? 2 : pngs.length < 500 ? 4 : 6,
+    pngs.length < 100 ? 3 : pngs.length < 500 ? 6 : 12,
     math.max(1, maxConcurrency),
   );
 
+  final recompressLevelEnv = int.tryParse(
+    (Platform.environment['VOXELSHIFT_RECOMPRESS_LEVEL'] ?? '').trim(),
+  );
+  final defaultLevel = pngs.length >= 1200
+      ? 4
+      : pngs.length >= 500
+          ? 5
+          : 7;
+  final recompressLevel =
+      (recompressLevelEnv == null ? defaultLevel : recompressLevelEnv.clamp(0, 9));
+
   onWorkersReady?.call(concurrency);
+  onProgress?.call(0, pngs.length);
 
   final results = List<Uint8List?>.filled(pngs.length, null);
   int completed = 0;
@@ -647,7 +1068,7 @@ Future<List<Uint8List>> recompressPngsParallel({
   void launchOne() {
     if (nextIdx >= pngs.length || completer.isCompleted) return;
     final idx = nextIdx++;
-    Isolate.run(() => recompressPng(pngs[idx])).then((result) {
+    Isolate.run(() => recompressPng(pngs[idx], level: recompressLevel)).then((result) {
       results[idx] = result;
       completed++;
       final now = DateTime.now();

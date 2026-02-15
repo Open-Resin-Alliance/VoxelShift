@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
+import 'dart:ui';
 
 import 'package:flutter/material.dart';
 
@@ -9,6 +11,7 @@ import '../../core/models/models.dart';
 import '../../core/network/app_settings.dart';
 import '../../core/network/device_cache.dart';
 import '../../core/network/nanodlp_client.dart';
+import 'settings_screen.dart';
 
 /// Processing phases for the post-processor flow.
 enum _Phase { loading, converting, converted, uploading, complete, error }
@@ -31,8 +34,7 @@ class PostProcessorScreen extends StatefulWidget {
   State<PostProcessorScreen> createState() => _PostProcessorScreenState();
 }
 
-class _PostProcessorScreenState extends State<PostProcessorScreen>
-    with TickerProviderStateMixin {
+class _PostProcessorScreenState extends State<PostProcessorScreen> {
   final _converter = CtbToNanoDlpConverter();
   final _cache = DeviceCache();
 
@@ -45,14 +47,32 @@ class _PostProcessorScreenState extends State<PostProcessorScreen>
 
   double _convertProgress = 0.0;
   double _uploadProgress = 0.0;
-  bool _isSlicing = false;
+  bool _isDeviceProcessing = false;
   int? _uploadedPlateId;
   bool _isStartingPrint = false;
   ConversionProgress? _conversionProgress;
+  ConversionProgress? _pendingConversionProgress;
+  bool _hasPendingConversionUiUpdate = false;
+  DateTime? _conversionSampleAt;
+  int _conversionSampleCount = 0;
+  double? _conversionRateLayersPerSec;
+  double? _pendingConversionRateLayersPerSec;
+  String? _lastConversionPhase;
+  Timer? _conversionUiTicker;
+
+  DateTime? _uploadSampleAt;
+  double _uploadSampleProgress = 0.0;
+  int _uploadTotalBytes = 0;
+  double? _uploadRateMbPerSec;
+  DateTime? _deviceProcessingStartedAt;
+  Timer? _deviceProcessingTicker;
+  DateTime? _processStartedAt;
+  DateTime? _processEndedAt;
 
   // Background mode options
   bool _runInBackground = false;
   bool _autoStartPrint = false;
+  bool _useAsDefault = false;
   bool _isResinLoading = false;
   List<ResinProfile> _resinProfiles = [];
   ResinProfile? _selectedResin;
@@ -60,35 +80,62 @@ class _PostProcessorScreenState extends State<PostProcessorScreen>
 
   DateTime _lastProgressUpdate = DateTime.fromMillisecondsSinceEpoch(0);
 
-  late AnimationController _pulseController;
-  late Animation<double> _pulseAnimation;
-  late AnimationController _sliceController;
-
   @override
   void initState() {
     super.initState();
     _converter.addLogListener(_onLog);
-    _pulseController = AnimationController(
-      duration: const Duration(milliseconds: 1200),
-      vsync: this,
-    );
-    _pulseAnimation = Tween<double>(begin: 0.85, end: 1.0).animate(
-      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
-    );
-    _sliceController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 2500),
-    )..repeat();
     _loadCachedDevices();
     _loadFile();
   }
 
   @override
   void dispose() {
+    _stopConversionUiTicker();
+    _stopDeviceProcessingTicker();
     _converter.removeLogListener(_onLog);
-    _pulseController.dispose();
-    _sliceController.dispose();
     super.dispose();
+  }
+
+  void _startDeviceProcessingTicker() {
+    _deviceProcessingTicker ??= Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      if (!(_phase == _Phase.uploading && _isDeviceProcessing)) {
+        _stopDeviceProcessingTicker();
+        return;
+      }
+      setState(() {});
+    });
+  }
+
+  void _stopDeviceProcessingTicker() {
+    _deviceProcessingTicker?.cancel();
+    _deviceProcessingTicker = null;
+  }
+
+  void _startConversionUiTicker() {
+    _conversionUiTicker ??= Timer.periodic(const Duration(milliseconds: 220), (_) {
+      if (!mounted) return;
+      if (_phase != _Phase.converting) {
+        _stopConversionUiTicker();
+        return;
+      }
+      if (!_hasPendingConversionUiUpdate) return;
+
+      final pending = _pendingConversionProgress;
+      if (pending == null) return;
+
+      _hasPendingConversionUiUpdate = false;
+      setState(() {
+        _conversionProgress = pending;
+        _convertProgress = pending.fraction;
+        _conversionRateLayersPerSec = _pendingConversionRateLayersPerSec;
+      });
+    });
+  }
+
+  void _stopConversionUiTicker() {
+    _conversionUiTicker?.cancel();
+    _conversionUiTicker = null;
   }
 
   void _onLog(String msg) {
@@ -99,7 +146,11 @@ class _PostProcessorScreenState extends State<PostProcessorScreen>
     if (nextValue >= 1.0 && _uploadProgress < 1.0) return true;
     final now = DateTime.now();
     final elapsed = now.difference(_lastProgressUpdate).inMilliseconds;
-    if (elapsed < 250 && (nextValue - _convertProgress).abs() < 0.02) {
+    final isHeavyConverting =
+        _phase == _Phase.converting && (_conversionProgress?.workers ?? 0) >= 9;
+    final minIntervalMs = isHeavyConverting ? 500 : 250;
+    final minDelta = isHeavyConverting ? 0.04 : 0.02;
+    if (elapsed < minIntervalMs && (nextValue - _convertProgress).abs() < minDelta) {
       return false;
     }
     _lastProgressUpdate = now;
@@ -134,148 +185,422 @@ class _PostProcessorScreenState extends State<PostProcessorScreen>
 
     await showDialog(
       context: context,
+      barrierDismissible: false,
       builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => Dialog(
-          backgroundColor: Colors.transparent,
-          insetPadding: const EdgeInsets.all(24),
-          child: Container(
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              color: const Color(0xFF1E293B),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.12), width: 1),
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: Theme.of(context)
-                            .colorScheme
-                            .primary
-                            .withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: Theme.of(context)
-                              .colorScheme
-                              .primary
-                              .withValues(alpha: 0.35),
-                        ),
-                      ),
-                      child: Icon(
-                        Icons.auto_awesome,
-                        color: Theme.of(context).colorScheme.primary,
-                        size: 20,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    const Expanded(
-                      child: Text(
-                        'Run in Background',
-                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
-                      ),
-                    ),
-                  ],
+        builder: (ctx, setDialogState) => BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+          child: Dialog(
+            backgroundColor: Colors.transparent,
+            insetPadding: const EdgeInsets.all(24),
+            child: Container(
+              padding: const EdgeInsets.all(32),
+              constraints: const BoxConstraints(maxWidth: 500),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1E293B).withValues(alpha: 0.95),
+                borderRadius: BorderRadius.circular(24),
+                border: Border.all(
+                  color: Colors.white.withValues(alpha: 0.15),
+                  width: 1.5,
                 ),
-                const SizedBox(height: 12),
-                Text(
-                  'Select the material to use after conversion and optionally start the print automatically.',
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: Colors.white.withValues(alpha: 0.6),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.5),
+                    blurRadius: 32,
+                    spreadRadius: 8,
                   ),
-                ),
-                const SizedBox(height: 16),
-                if (_isResinLoading)
+                ],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
                   Row(
                     children: [
-                      const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [
+                              Theme.of(context).colorScheme.primary.withValues(alpha: 0.25),
+                              Theme.of(context).colorScheme.primary.withValues(alpha: 0.15),
+                            ],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(
+                            color: Theme.of(context)
+                                .colorScheme
+                                .primary
+                                .withValues(alpha: 0.4),
+                            width: 1.5,
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.2),
+                              blurRadius: 12,
+                              spreadRadius: 1,
+                            ),
+                          ],
+                        ),
+                        child: Icon(
+                          Icons.science_outlined,
+                          color: Theme.of(context).colorScheme.primary,
+                          size: 24,
+                        ),
                       ),
-                      const SizedBox(width: 10),
-                      Text(
-                        'Loading material profiles…',
-                        style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.6),
-                          fontSize: 12,
+                      const SizedBox(width: 14),
+                      const Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Select Material Profile',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: -0.3,
+                              ),
+                            ),
+                            SizedBox(height: 2),
+                            Text(
+                              'Choose your resin',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Color(0xFF94A3B8),
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ],
-                  )
-                else
-                  DropdownButtonFormField<ResinProfile>(
-                    initialValue: _selectedResin,
-                    decoration: InputDecoration(
-                      labelText: 'Material profile',
-                      labelStyle: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.6),
-                      ),
-                      filled: true,
-                      fillColor: const Color(0xFF0F172A),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide.none,
-                      ),
-                    ),
-                    dropdownColor: const Color(0xFF16213E),
-                    isExpanded: true,
-                    items: _resinProfiles
-                        .map((p) => DropdownMenuItem(
-                              value: p,
-                              child: Text(p.name),
-                            ))
-                        .toList(),
-                    onChanged: (p) {
-                      setDialogState(() => _selectedResin = p);
-                    },
                   ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Checkbox(
-                      value: _autoStartPrint,
-                      onChanged: (val) =>
-                          setDialogState(() => _autoStartPrint = val ?? false),
-                      activeColor: Theme.of(context).colorScheme.primary,
-                    ),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: Text(
-                        'Start print after upload',
-                        style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.8),
-                          fontSize: 13,
+                  const SizedBox(height: 24),
+                  if (_isResinLoading)
+                    Container(
+                      padding: const EdgeInsets.symmetric(vertical: 32),
+                      child: Center(
+                        child: Column(
+                          children: [
+                            SizedBox(
+                              width: 32,
+                              height: 32,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 3,
+                                color: Theme.of(ctx).colorScheme.primary,
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              'Loading material profiles…',
+                              style: TextStyle(
+                                color: Colors.white.withValues(alpha: 0.6),
+                                fontSize: 13,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
+                    )
+                  else
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'MATERIAL PROFILE',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.8,
+                            color: Colors.white.withValues(alpha: 0.5),
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        Container(
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF0F172A),
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(
+                              color: Colors.white.withValues(alpha: 0.1),
+                              width: 1.5,
+                            ),
+                          ),
+                          child: DropdownButtonHideUnderline(
+                            child: DropdownButton<ResinProfile>(
+                              value: _selectedResin,
+                              isExpanded: true,
+                              dropdownColor: const Color(0xFF16213E),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 12,
+                              ),
+                              borderRadius: BorderRadius.circular(14),
+                              icon: Icon(
+                                Icons.arrow_drop_down,
+                                color: Colors.white.withValues(alpha: 0.7),
+                                size: 28,
+                              ),
+                              onChanged: (p) {
+                                setDialogState(() => _selectedResin = p);
+                              },
+                              items: _resinProfiles.map((profile) {
+                                return DropdownMenuItem(
+                                  value: profile,
+                                  child: Row(
+                                    children: [
+                                      Container(
+                                        width: 8,
+                                        height: 8,
+                                        decoration: BoxDecoration(
+                                          color: Theme.of(ctx).colorScheme.primary,
+                                          shape: BoxShape.circle,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 10),
+                                      Expanded(
+                                        child: Text(
+                                          profile.name,
+                                          style: const TextStyle(
+                                            fontSize: 14,
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              }).toList(),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 20),
+                        Container(
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF0F172A).withValues(alpha: 0.5),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: Colors.white.withValues(alpha: 0.08),
+                            ),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'ADVANCED OPTIONS',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w700,
+                                  letterSpacing: 0.8,
+                                  color: Colors.white.withValues(alpha: 0.4),
+                                ),
+                              ),
+                              const SizedBox(height: 10),
+                              InkWell(
+                                onTap: () {
+                                  setDialogState(() => _useAsDefault = !_useAsDefault);
+                                },
+                                borderRadius: BorderRadius.circular(8),
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(vertical: 4),
+                                  child: Row(
+                                    children: [
+                                      SizedBox(
+                                        width: 20,
+                                        height: 20,
+                                        child: Checkbox(
+                                          value: _useAsDefault,
+                                          onChanged: (val) =>
+                                              setDialogState(() => _useAsDefault = val ?? false),
+                                          activeColor: Theme.of(ctx).colorScheme.primary,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 10),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            const Text(
+                                              'Use as default',
+                                              style: TextStyle(
+                                                fontSize: 13,
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                            ),
+                                            Text(
+                                              'Remember this choice for future conversions',
+                                              style: TextStyle(
+                                                fontSize: 11,
+                                                color: Colors.white.withValues(alpha: 0.5),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              InkWell(
+                                onTap: () {
+                                  setDialogState(() => _autoStartPrint = !_autoStartPrint);
+                                },
+                                borderRadius: BorderRadius.circular(8),
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(vertical: 4),
+                                  child: Row(
+                                    children: [
+                                      SizedBox(
+                                        width: 20,
+                                        height: 20,
+                                        child: Checkbox(
+                                          value: _autoStartPrint,
+                                          onChanged: (val) =>
+                                              setDialogState(() => _autoStartPrint = val ?? false),
+                                          activeColor: Theme.of(ctx).colorScheme.primary,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 10),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            const Text(
+                                              'Auto-start print',
+                                              style: TextStyle(
+                                                fontSize: 13,
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                            ),
+                                            Text(
+                                              'Begin printing immediately after upload',
+                                              style: TextStyle(
+                                                fontSize: 11,
+                                                color: Colors.white.withValues(alpha: 0.5),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  const SizedBox(height: 24),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () => Navigator.of(ctx).pop(),
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            side: BorderSide(color: Colors.grey.shade700),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          child: const Text('Cancel'),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        flex: 2,
+                        child: ElevatedButton(
+                          onPressed: _selectedResin == null
+                              ? null
+                              : () async {
+                                  // Save as default if checkbox is set
+                                  if (_useAsDefault && _selectedResin != null) {
+                                    final settings = await AppSettings.load();
+                                    settings.defaultMaterialProfileId = _selectedResin!.profileId;
+                                    await settings.save();
+                                  }
+                                  setState(() => _runInBackground = true);
+                                  Navigator.of(ctx).pop();
+                                },
+                          style: ElevatedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            backgroundColor: Theme.of(ctx).colorScheme.primary,
+                            foregroundColor: Colors.black,
+                            disabledBackgroundColor: Colors.grey.shade800,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const Icon(Icons.check_circle_outline, size: 18),
+                              const SizedBox(width: 8),
+                              const Text(
+                                'Continue',
+                                style: TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showSettingsDialog() async {
+    await showDialog(
+      context: context,
+      builder: (ctx) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.all(20),
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: const Color(0xFF1E293B),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.12), width: 1),
+          ),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 520, maxHeight: 520),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.settings, color: Theme.of(context).colorScheme.primary),
+                    const SizedBox(width: 8),
+                    const Expanded(
+                      child: Text(
+                        'Post-processing Settings',
+                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'Close',
+                      onPressed: () => Navigator.of(ctx).pop(),
+                      icon: const Icon(Icons.close),
                     ),
                   ],
                 ),
-                const SizedBox(height: 16),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    OutlinedButton(
-                      onPressed: () => Navigator.of(ctx).pop(),
-                      child: const Text('Close'),
-                    ),
-                    const SizedBox(width: 10),
-                    ElevatedButton.icon(
-                      onPressed: _selectedResin == null
-                          ? null
-                          : () {
-                              setState(() => _runInBackground = true);
-                              Navigator.of(ctx).pop();
-                            },
-                      icon: const Icon(Icons.play_circle_outline, size: 18),
-                      label: const Text('Enable'),
-                    ),
-                  ],
+                const SizedBox(height: 8),
+                const Divider(height: 1),
+                const SizedBox(height: 8),
+                const Expanded(
+                  child: SettingsScreen(),
                 ),
               ],
             ),
@@ -327,11 +652,23 @@ class _PostProcessorScreenState extends State<PostProcessorScreen>
       });
 
       if (widget.activeDevice != null && mounted) {
-        _loadResinProfiles();
-        await Future.delayed(const Duration(milliseconds: 200));
-        final isLargePrint = (info.layerCount) > 300;
-        if (mounted && isLargePrint && !_backgroundDialogShown) {
+        // Load settings to check for default profile
+        final settings = await AppSettings.load();
+        
+        // Skip dialog if we have a default profile saved
+        if (settings.defaultMaterialProfileId != null) {
+          // Use default profile if available
+          if (mounted) {
+            _backgroundDialogShown = true;
+            _startConversion();
+          }
+          return;
+        }
+        
+        // No default profile: show material selection dialog
+        if (mounted && !_backgroundDialogShown) {
           _backgroundDialogShown = true;
+          await _loadResinProfiles();
           await _showBackgroundOptionsDialog();
         }
         if (mounted) _startConversion();
@@ -352,8 +689,18 @@ class _PostProcessorScreenState extends State<PostProcessorScreen>
       _errorMessage = null;
       _result = null;
       _convertProgress = 0.0;
+      _processStartedAt = DateTime.now();
+      _processEndedAt = null;
       _conversionProgress = null;
+      _pendingConversionProgress = null;
+      _hasPendingConversionUiUpdate = false;
+      _conversionSampleAt = null;
+      _conversionSampleCount = 0;
+      _conversionRateLayersPerSec = null;
+      _pendingConversionRateLayersPerSec = null;
+      _lastConversionPhase = null;
     });
+    _startConversionUiTicker();
 
     try {
       final result = await _converter.convert(
@@ -361,33 +708,69 @@ class _PostProcessorScreenState extends State<PostProcessorScreen>
         options: ConversionOptions(targetProfile: _selectedProfile),
         onProgress: (p) {
           if (!mounted) return;
-          _conversionProgress = p;
+          _pendingConversionProgress = p;
+
+          final phaseChanged = _lastConversionPhase != p.phase;
+          if (phaseChanged) {
+            _lastConversionPhase = p.phase;
+            _conversionSampleAt = null;
+            _conversionSampleCount = p.current;
+            _pendingConversionRateLayersPerSec = null;
+          }
+
+          final shouldTrackThroughput =
+              _isThroughputPhase(p.phase) && p.total > 0;
+
+          final now = DateTime.now();
+          final sampleAt = _conversionSampleAt;
+          if (shouldTrackThroughput) {
+            if (sampleAt != null) {
+              final dtMs = now.difference(sampleAt).inMilliseconds;
+              final dCount = p.current - _conversionSampleCount;
+              if (dtMs >= 400 && dCount > 0) {
+                final instantRate = dCount / (dtMs / 1000.0);
+                _pendingConversionRateLayersPerSec = _pendingConversionRateLayersPerSec == null
+                    ? instantRate
+                    : ((_pendingConversionRateLayersPerSec! * 0.65) + (instantRate * 0.35));
+                _conversionSampleAt = now;
+                _conversionSampleCount = p.current;
+              }
+            } else {
+              _conversionSampleAt = now;
+              _conversionSampleCount = p.current;
+            }
+          } else {
+            _pendingConversionRateLayersPerSec = null;
+            _conversionSampleAt = null;
+            _conversionSampleCount = p.current;
+          }
+
           if (_shouldUpdateProgress(p.fraction)) {
-            setState(() => _convertProgress = p.fraction);
+            _hasPendingConversionUiUpdate = true;
           }
         },
       );
 
       if (!mounted) return;
+      _stopConversionUiTicker();
 
+      // Store result and go straight to upload (skip intermediate screen)
       setState(() {
         _result = result;
-        _phase = _Phase.converted;
       });
 
-      // Pulse the checkmark
-      _pulseController.repeat(reverse: true);
-
       if (result.success && widget.activeDevice != null) {
-        // Show completion briefly, then auto-upload
-        await Future.delayed(const Duration(milliseconds: 1500));
         if (mounted) {
-          _pulseController.stop();
-          _pulseController.reset();
           _startUpload();
         }
+      } else if (mounted) {
+        // Failed: show converted phase with error
+        setState(() {
+          _phase = _Phase.converted;
+        });
       }
     } catch (e) {
+      _stopConversionUiTicker();
       setState(() {
         _errorMessage = 'Conversion failed: $e';
         _phase = _Phase.error;
@@ -426,24 +809,35 @@ class _PostProcessorScreenState extends State<PostProcessorScreen>
         );
       }
 
-      if (selectedResin == null) {
-        // Show selection dialog
+      // Always show material selection if we haven't already
+      if (selectedResin == null && !_backgroundDialogShown) {
+        _backgroundDialogShown = true;
         selectedResin = await _showMaterialProfileDialog(selectable);
         if (selectedResin == null) {
           // User cancelled — stay on converted state
-          setState(() => _phase = _Phase.converted);
-          _pulseController.repeat(reverse: true);
+          if (mounted) {
+            setState(() => _phase = _Phase.converted);
+          }
           client.dispose();
           return;
         }
+      } else {
+        selectedResin ??= selectable.first;
       }
 
       // Now start uploading
       setState(() {
         _phase = _Phase.uploading;
         _uploadProgress = 0.0;
-        _isSlicing = false;
+        _isDeviceProcessing = false;
+        _uploadSampleAt = null;
+        _uploadSampleProgress = 0.0;
+        _uploadRateMbPerSec = null;
+        _deviceProcessingStartedAt = null;
       });
+      _stopDeviceProcessingTicker();
+
+      _uploadTotalBytes = await File(outputPath).length();
 
       final jobName = widget.ctbFilePath
           .split(Platform.pathSeparator)
@@ -457,10 +851,34 @@ class _PostProcessorScreenState extends State<PostProcessorScreen>
         profileId: selectedResin.profileId,
         onProgress: (p) {
           if (!mounted) return;
+
+          final now = DateTime.now();
+          final sampleAt = _uploadSampleAt;
+          if (sampleAt != null && _uploadTotalBytes > 0) {
+            final dtMs = now.difference(sampleAt).inMilliseconds;
+            final dProgress = p - _uploadSampleProgress;
+            if (dtMs >= 350 && dProgress > 0) {
+              final bytesPerSec = (dProgress * _uploadTotalBytes) / (dtMs / 1000.0);
+              final mbPerSec = bytesPerSec / (1024 * 1024);
+              _uploadRateMbPerSec = _uploadRateMbPerSec == null
+                  ? mbPerSec
+                  : ((_uploadRateMbPerSec! * 0.65) + (mbPerSec * 0.35));
+              _uploadSampleAt = now;
+              _uploadSampleProgress = p;
+            }
+          } else {
+            _uploadSampleAt = now;
+            _uploadSampleProgress = p;
+          }
+
           if (_shouldUpdateProgress(p)) {
             setState(() {
               _uploadProgress = p;
-              if (p >= 0.99) _isSlicing = true;
+              if (p >= 0.99) {
+                _isDeviceProcessing = true;
+                _deviceProcessingStartedAt ??= DateTime.now();
+                _startDeviceProcessingTicker();
+              }
             });
           }
         },
@@ -475,7 +893,7 @@ class _PostProcessorScreenState extends State<PostProcessorScreen>
         return;
       }
 
-      // Update slicing state logic
+      // Move to post-upload processing state.
       setState(() => _uploadProgress = 1.0);
       
       // Wait for metadata & resolve plateId
@@ -485,8 +903,12 @@ class _PostProcessorScreenState extends State<PostProcessorScreen>
         timeout: const Duration(minutes: 3),
         onProgress: (_) {
            // Ignore fake progress based on timeout
-           if (mounted && !_isSlicing) {
-             setState(() => _isSlicing = true);
+           if (mounted && !_isDeviceProcessing) {
+             setState(() {
+               _isDeviceProcessing = true;
+               _deviceProcessingStartedAt ??= DateTime.now();
+             });
+             _startDeviceProcessingTicker();
            }
         },
       );
@@ -504,8 +926,9 @@ class _PostProcessorScreenState extends State<PostProcessorScreen>
         _phase = _Phase.complete;
         _uploadProgress = 0.0;
         _uploadedPlateId = plateId;
+        _processEndedAt ??= DateTime.now();
       });
-      _pulseController.repeat(reverse: true);
+      _stopDeviceProcessingTicker();
 
       if (_runInBackground && _autoStartPrint && plateId != null) {
         await _startPrint();
@@ -516,6 +939,7 @@ class _PostProcessorScreenState extends State<PostProcessorScreen>
         _phase = _Phase.error;
         _uploadProgress = 0.0;
       });
+      _stopDeviceProcessingTicker();
     } finally {
       client.dispose();
     }
@@ -684,6 +1108,7 @@ class _PostProcessorScreenState extends State<PostProcessorScreen>
                                 selectedProfile!.profileId;
                             await settings.save();
                           }
+                          if (!ctx.mounted) return;
                           Navigator.of(ctx).pop(selectedProfile);
                         },
                         child: const Text('Use This Profile'),
@@ -826,83 +1251,198 @@ class _PostProcessorScreenState extends State<PostProcessorScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0F172A),
-      appBar: AppBar(
-        title: const Text('VoxelShift Post-Processor'),
-        centerTitle: true,
-        backgroundColor: const Color(0xFF1E293B),
-        actions: [
-          IconButton(
-            tooltip: 'Run in background',
-            onPressed: _showBackgroundOptionsDialog,
-            icon: const Icon(Icons.auto_awesome, color: Color(0xFF22D3EE)),
-          ),
-          IconButton(
-            tooltip: 'Cancel',
-            onPressed: _showCancelDialog,
-            icon: const Icon(Icons.stop_circle_outlined, color: Colors.redAccent),
-          ),
-          const SizedBox(width: 8),
-        ],
-      ),
-      body: Column(
-        children: [
-          Expanded(
-            child: Center(
-              child: SingleChildScrollView(
-                child: Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 500),
-                    child: AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 500),
-                      switchInCurve: Curves.easeOut,
-                      switchOutCurve: Curves.easeIn,
-                      child: _buildContent(),
+      backgroundColor: Colors.transparent,
+      appBar: PreferredSize(
+        preferredSize: const Size.fromHeight(56),
+        child: ClipRRect(
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+            child: AppBar(
+              title: const Text('VoxelShift Post-Processor'),
+              centerTitle: true,
+              backgroundColor: const Color(0xFF1E293B).withValues(alpha: 0.7),
+              elevation: 0,
+              bottom: PreferredSize(
+                preferredSize: const Size.fromHeight(1),
+                child: Container(
+                  height: 1,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        Colors.white.withValues(alpha: 0.0),
+                        Colors.white.withValues(alpha: 0.15),
+                        Colors.white.withValues(alpha: 0.0),
+                      ],
                     ),
                   ),
                 ),
               ),
+              actions: const [],
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.only(bottom: 16),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
-                  'Powered by ',
-                  style: TextStyle(
-                    fontFamily: 'AtkinsonHyperlegible',
-                    fontSize: 22,
-                    color: Colors.grey,
-                    fontWeight: FontWeight.w500,
+        ),
+      ),
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            colors: [
+              Color(0xFF0F172A),
+              Color(0xFF16213E),
+              Color(0xFF1E293B),
+            ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+        ),
+        child: Stack(
+          children: [
+            Column(
+            children: [
+              Expanded(
+                child: Center(
+                  child: SingleChildScrollView(
+                    child: Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 500),
+                        child: AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 500),
+                          switchInCurve: Curves.easeOutCubic,
+                          switchOutCurve: Curves.easeInCubic,
+                          transitionBuilder: (child, animation) {
+                            final slide = Tween<Offset>(
+                              begin: const Offset(0, 0.08),
+                              end: Offset.zero,
+                            ).animate(CurvedAnimation(
+                              parent: animation,
+                              curve: Curves.easeOutCubic,
+                            ));
+                            return FadeTransition(
+                              opacity: animation,
+                              child: SlideTransition(
+                                position: slide,
+                                child: child,
+                              ),
+                            );
+                          },
+                          child: _buildContent(),
+                        ),
+                      ),
+                    ),
                   ),
                 ),
-                ShaderMask(
-                  shaderCallback: (bounds) => const LinearGradient(
-                    colors: [
-                      Color(0xFFFF9D7A),
-                      Color(0xFFFF7A85),
-                      Color(0xFFC49FE8),
-                    ],
-                    begin: Alignment.centerLeft,
-                    end: Alignment.centerRight,
-                  ).createShader(bounds),
-                  child: const Text(
-                    'Open Resin Alliance',
-                    style: TextStyle(
-                      fontFamily: 'AtkinsonHyperlegible',
-                      fontSize: 22,
-                      color: Colors.white,
-                      fontWeight: FontWeight.w500,
+              ),
+              Padding(
+                padding: const EdgeInsets.only(bottom: 22),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      'Powered by ',
+                      style: TextStyle(
+                        fontFamily: 'AtkinsonHyperlegible',
+                        fontSize: 18,
+                        color: Colors.grey,
+                        fontWeight: FontWeight.w500,
+                      ),
                     ),
+                    ShaderMask(
+                      shaderCallback: (bounds) => const LinearGradient(
+                        colors: [
+                          Color(0xFFFF9D7A),
+                          Color(0xFFFF7A85),
+                          Color(0xFFC49FE8),
+                        ],
+                        begin: Alignment.centerLeft,
+                        end: Alignment.centerRight,
+                      ).createShader(bounds),
+                      child: const Text(
+                        'Open Resin Alliance',
+                        style: TextStyle(
+                          fontFamily: 'AtkinsonHyperlegible',
+                          fontSize: 18,
+                          color: Colors.white,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+            Positioned(
+            left: 16,
+            bottom: 16,
+            child: Row(
+              children: [
+                DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1E293B),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.25),
+                        blurRadius: 10,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: IconButton(
+                    tooltip: 'Settings',
+                    onPressed: _showSettingsDialog,
+                    icon: const Icon(Icons.settings, size: 18),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1E293B),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.25),
+                        blurRadius: 10,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: IconButton(
+                    tooltip: 'Run in background',
+                    onPressed: _showBackgroundOptionsDialog,
+                    icon: const Icon(Icons.auto_awesome, size: 18, color: Color(0xFF22D3EE)),
                   ),
                 ),
               ],
             ),
           ),
-        ],
+            Positioned(
+            right: 16,
+            bottom: 16,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: const Color(0xFF1E293B),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.25),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: IconButton(
+                tooltip: 'Cancel',
+                onPressed: _showCancelDialog,
+                icon: const Icon(Icons.stop_circle_outlined, size: 18, color: Colors.redAccent),
+              ),
+            ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -981,10 +1521,10 @@ class _PostProcessorScreenState extends State<PostProcessorScreen>
 
       case _Phase.converting:
         return _buildActivityWidget(
-          _conversionProgress?.phase ?? 'Initializing...',
+          _displayConversionPhase(_conversionProgress?.phase),
           key: 'activity',
           progress: _convertProgress,
-          color: Colors.cyan,
+          color: _getColorForFileSize(),
         );
 
       case _Phase.converted:
@@ -997,13 +1537,13 @@ class _PostProcessorScreenState extends State<PostProcessorScreen>
 
       case _Phase.uploading:
         return _buildActivityWidget(
-          _isSlicing 
-            ? 'Processing on device...' 
+          _isDeviceProcessing
+            ? 'Processing on device...'
             : 'Uploading to ${widget.activeDevice!.displayName}...',
-          key: _isSlicing ? 'slicing' : 'activity',
+          key: _isDeviceProcessing ? 'processing' : 'activity',
           progress: _uploadProgress,
-          color: Colors.purpleAccent,
-          isSlicing: _isSlicing,
+          color: Colors.cyan,
+          isDeviceProcessing: _isDeviceProcessing,
         );
 
       case _Phase.complete:
@@ -1016,18 +1556,14 @@ class _PostProcessorScreenState extends State<PostProcessorScreen>
     required String key,
     required Color color,
     double? progress,
-    bool isSlicing = false,
+    bool isDeviceProcessing = false,
   }) {
     return Column(
       key: ValueKey(key),
-      mainAxisAlignment: MainAxisAlignment.center,
+      mainAxisAlignment: MainAxisAlignment.start,
       children: [
-        isSlicing 
-            ? _AnimatedSlicingBlock(
-                controller: _sliceController, 
-                primaryColor: color,
-              )
-            : _SpinnerArcs(color: color),
+        const SizedBox(height: 24),
+        _SpinnerArcs(color: color),
         const SizedBox(height: 32),
         Text(
           message,
@@ -1035,19 +1571,24 @@ class _PostProcessorScreenState extends State<PostProcessorScreen>
           textAlign: TextAlign.center,
         ),
         if (progress != null) ...[
-          const SizedBox(height: 20),
+          const SizedBox(height: 24),
           ClipRRect(
-            borderRadius: BorderRadius.circular(8),
-            child: LinearProgressIndicator(
-              value: isSlicing ? null : progress,
-              color: color,
-              backgroundColor: color.withValues(alpha: 0.2),
-              minHeight: 6,
+            borderRadius: BorderRadius.circular(10),
+            child: TweenAnimationBuilder<double>(
+              duration: const Duration(milliseconds: 350),
+              curve: Curves.easeOutCubic,
+              tween: Tween<double>(begin: 0, end: isDeviceProcessing ? 0 : progress),
+              builder: (context, value, _) => LinearProgressIndicator(
+                value: isDeviceProcessing ? null : value,
+                color: color,
+                backgroundColor: color.withValues(alpha: 0.2),
+                minHeight: 9,
+              ),
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 12),
           Text(
-            isSlicing
+            isDeviceProcessing
                 ? 'Processing on device... This may take a while.'
                 : '${(progress * 100).toStringAsFixed(0)}%'
                     '${_conversionProgress != null ? " (${_conversionProgress!.current}/${_conversionProgress!.total})" : ""}'
@@ -1057,9 +1598,198 @@ class _PostProcessorScreenState extends State<PostProcessorScreen>
               color: Colors.white.withValues(alpha: 0.5),
             ),
           ),
+          const SizedBox(height: 30),
+          _buildTelemetryContainer(isDeviceProcessing: isDeviceProcessing),
+          if (_conversionProgress?.workers != null && _conversionProgress!.workers! > 5) ...[
+            const SizedBox(height: 14),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              decoration: BoxDecoration(
+                color: Colors.orange.shade900.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: Colors.orange.shade700.withValues(alpha: 0.3),
+                ),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.info_outline,
+                    color: Colors.orange.shade300,
+                    size: 16,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Heavy processing: RGB lighting or UI may briefly stall',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Colors.orange.shade200,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
+            ),
+          ],
         ],
+        if (progress == null) const SizedBox(height: 140),
       ],
     );
+  }
+
+  Widget _buildTelemetryContainer({required bool isDeviceProcessing}) {
+    final lines = _buildTelemetryLines(isDeviceProcessing: isDeviceProcessing);
+    final hasLines = lines.isNotEmpty;
+
+    return AnimatedOpacity(
+      duration: const Duration(milliseconds: 200),
+      opacity: hasLines ? 1.0 : 0.35,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: const Color(0xFF16213E),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+        ),
+        child: SizedBox(
+          height: 90,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: hasLines
+                ? lines
+                : [
+                    Text(
+                      'Metrics will appear here during processing.',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Colors.white.withValues(alpha: 0.45),
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  List<Widget> _buildTelemetryLines({required bool isDeviceProcessing}) {
+    final lines = <String>[];
+
+    if (_phase == _Phase.converting) {
+      final phaseText = (_conversionProgress?.phase ?? '').toLowerCase();
+      final board = _selectedProfile?.board == BoardType.twoBit3Subpixel
+          ? '3-bit subpixel'
+          : '8-bit RGB';
+
+      String mode;
+      if (phaseText.contains('reading')) {
+        mode = 'I/O decode';
+      } else if (phaseText.contains('processing')) {
+        mode = 'CPU layer processing';
+      } else if (phaseText.contains('compressing')) {
+        mode = 'Compression pass';
+      } else if (phaseText.contains('writing')) {
+        mode = 'Packaging/ZIP write';
+      } else {
+        mode = 'Initialization';
+      }
+
+      lines.add('$mode • $board');
+
+      if (phaseText.contains('compressing')) {
+        lines.add('PNG recompress • zlib level 7 (adaptive)');
+      } else if (phaseText.contains('processing')) {
+        lines.add('PNG encode • Up filter + zlib level 1');
+        final engine = _extractEngineFromPhase(_conversionProgress?.phase);
+        if (engine != null && engine.isNotEmpty) {
+          lines.add(engine);
+        }
+      } else if (phaseText.contains('writing')) {
+        lines.add('NanoDLP packaging');
+      }
+
+      // Throughput is only meaningful outside the lightweight read phase.
+      final rate = _conversionRateLayersPerSec;
+      if (!phaseText.contains('reading') && rate != null && rate > 0) {
+        lines.add('${rate.toStringAsFixed(1)} layers/s');
+      }
+    } else if (_phase == _Phase.uploading) {
+      if (isDeviceProcessing) {
+        final started = _deviceProcessingStartedAt;
+        if (started == null) {
+          lines.add('Device-side processing');
+        } else {
+          final elapsed = DateTime.now().difference(started);
+          final mm = elapsed.inMinutes;
+          final ss = elapsed.inSeconds % 60;
+          lines.add('Device processing • ${mm}m ${ss.toString().padLeft(2, '0')}s');
+        }
+      } else {
+        lines.add('Network upload');
+        final rate = _uploadRateMbPerSec;
+        if (rate != null && rate > 0) {
+          lines.add('${rate.toStringAsFixed(2)} MB/s');
+        }
+      }
+    }
+
+    if (lines.isEmpty) return const [];
+
+    return lines
+        .map(
+          (line) => Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: Text(
+              line,
+              style: TextStyle(
+                fontSize: 11,
+                color: Colors.white.withValues(alpha: 0.6),
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ),
+        )
+        .toList();
+  }
+
+  Color _getColorForFileSize() {
+    final layers = _result?.layerCount ?? 0;
+    
+    // Thresholds: 50 layers (orange), 150 layers (deep orange), 300 layers+ (red)
+    if (layers >= 300) {
+      return Colors.red.shade600;
+    } else if (layers >= 150) {
+      return Colors.deepOrange.shade500;
+    } else if (layers >= 50) {
+      return Colors.orange.shade500;
+    } else {
+      return Colors.cyan;
+    }
+  }
+
+  bool _isThroughputPhase(String phase) {
+    final p = phase.toLowerCase();
+    return p.contains('processing') ||
+        p.contains('compressing') ||
+        p.contains('writing');
+  }
+
+  String _displayConversionPhase(String? rawPhase) {
+    if (rawPhase == null || rawPhase.isEmpty) return 'Initializing...';
+    // Remove bracketed engine hints from the main header.
+    return rawPhase.replaceAll(RegExp(r'\s*\[.*?\]\s*'), '').trim();
+  }
+
+  String? _extractEngineFromPhase(String? phase) {
+    if (phase == null) return null;
+    final match = RegExp(r'\[(.*?)\]').firstMatch(phase);
+    return match?.group(1);
   }
 
   Widget _buildCheckpointWidget(
@@ -1072,28 +1802,35 @@ class _PostProcessorScreenState extends State<PostProcessorScreen>
       key: ValueKey(key),
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        ScaleTransition(
-          scale: _pulseAnimation,
-          child: Container(
-            width: 80,
-            height: 80,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: LinearGradient(
-                colors: [color.withValues(alpha: 0.8), color],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: color.withValues(alpha: 0.4),
-                  blurRadius: 20,
-                  spreadRadius: 2,
+        TweenAnimationBuilder<double>(
+          duration: const Duration(milliseconds: 600),
+          curve: Curves.easeOutBack,
+          tween: Tween(begin: 0.0, end: 1.0),
+          builder: (context, scale, _) {
+            return Transform.scale(
+              scale: scale,
+              child: Container(
+                width: 80,
+                height: 80,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: LinearGradient(
+                    colors: [color.withValues(alpha: 0.8), color],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: color.withValues(alpha: 0.4),
+                      blurRadius: 20,
+                      spreadRadius: 2,
+                    ),
+                  ],
                 ),
-              ],
-            ),
-            child: const Icon(Icons.check, color: Colors.white, size: 44),
-          ),
+                child: const Icon(Icons.check, color: Colors.white, size: 44),
+              ),
+            );
+          },
         ),
         const SizedBox(height: 24),
         Text(
@@ -1116,94 +1853,194 @@ class _PostProcessorScreenState extends State<PostProcessorScreen>
   }
 
   Widget _buildCompleteWidget() {
+    final totalDuration = _processStartedAt != null
+        ? (_processEndedAt ?? DateTime.now()).difference(_processStartedAt!)
+        : null;
+    final totalDurationText = totalDuration == null
+        ? null
+        : '${totalDuration.inMinutes}m ${
+            (totalDuration.inSeconds % 60).toString().padLeft(2, '0')
+          }s';
+
     return Column(
       key: const ValueKey('complete'),
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        ScaleTransition(
-          scale: _pulseAnimation,
-          child: Container(
-            width: 80,
-            height: 80,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: LinearGradient(
-                colors: [Colors.green.shade400, Colors.green.shade700],
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.green.withValues(alpha: 0.4),
-                  blurRadius: 20,
-                  spreadRadius: 2,
+        TweenAnimationBuilder<double>(
+          duration: const Duration(milliseconds: 600),
+          curve: Curves.easeOutBack,
+          tween: Tween(begin: 0.0, end: 1.0),
+          builder: (context, scale, _) {
+            return Transform.scale(
+              scale: scale,
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF111827),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.35),
+                      blurRadius: 18,
+                      offset: const Offset(0, 8),
+                    ),
+                  ],
                 ),
-              ],
-            ),
-            child: const Icon(Icons.check, color: Colors.white, size: 44),
-          ),
-        ),
-        const SizedBox(height: 24),
-        const Text(
-          'Upload Complete!',
-          style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          'Your plate is ready on ${widget.activeDevice!.displayName}',
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            fontSize: 13,
-            color: Colors.white.withValues(alpha: 0.6),
-          ),
-        ),
-        const SizedBox(height: 32),
-        if (_uploadedPlateId != null) ...[
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: _isStartingPrint ? null : _startPrint,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.purple.shade700,
-                padding: const EdgeInsets.symmetric(vertical: 14),
-              ),
-              child: _isStartingPrint
-                  ? const SizedBox(
-                      height: 18,
-                      width: 18,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    )
-                  : const Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.play_arrow, size: 22),
-                        SizedBox(width: 8),
-                        Text(
-                          'Start Print',
-                          style: TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w600,
-                          ),
+                child: Column(
+                  children: [
+                    Container(
+                      width: 86,
+                      height: 86,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        gradient: LinearGradient(
+                          colors: [Colors.green.shade400, Colors.green.shade700],
                         ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.green.withValues(alpha: 0.4),
+                            blurRadius: 22,
+                            spreadRadius: 2,
+                          ),
+                        ],
+                      ),
+                      child: const Icon(Icons.check, color: Colors.white, size: 48),
+                    ),
+                    const SizedBox(height: 16),
+                    const Text(
+                      'Upload Complete',
+                      style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'Your plate is ready on ${widget.activeDevice!.displayName}',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: Colors.white.withValues(alpha: 0.6),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      alignment: WrapAlignment.center,
+                      children: [
+                        _StatusPill(
+                          label: 'Ready to print',
+                          icon: Icons.local_printshop_outlined,
+                          color: Colors.green.shade300,
+                        ),
+                        if (_uploadedPlateId != null)
+                          _StatusPill(
+                            label: 'Plate #${_uploadedPlateId!}',
+                            icon: Icons.layers_outlined,
+                            color: Colors.cyanAccent.shade100,
+                          ),
+                        if (totalDurationText != null)
+                          _StatusPill(
+                            label: 'Total time $totalDurationText',
+                            icon: Icons.timer_outlined,
+                            color: Colors.purpleAccent.shade100,
+                          ),
                       ],
                     ),
-            ),
-          ),
-          const SizedBox(height: 12),
-        ],
-        SizedBox(
-          width: double.infinity,
-          child: OutlinedButton(
-            onPressed: _isStartingPrint ? null : () => exit(0),
-            style: OutlinedButton.styleFrom(
-              side: BorderSide(color: Colors.grey.shade700),
-              padding: const EdgeInsets.symmetric(vertical: 14),
-            ),
-            child: const Text('Close'),
-          ),
+                  ],
+                ),
+              ),
+            );
+          },
         ),
-      ],
+        const SizedBox(height: 20),
+        if (_uploadedPlateId != null) ...[
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: _isStartingPrint ? null : _startPrint,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.purple.shade700,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                    ),
+                    child: _isStartingPrint
+                        ? const SizedBox(
+                            height: 18,
+                            width: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.play_arrow, size: 22),
+                              SizedBox(width: 8),
+                              Text(
+                                'Start Print',
+                                style: TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+              ],
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton(
+                  onPressed: _isStartingPrint ? null : () => exit(0),
+                  style: OutlinedButton.styleFrom(
+                    side: BorderSide(color: Colors.grey.shade700),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                  ),
+                  child: const Text('Close'),
+                ),
+              ),
+            ],
+    );
+  }
+}
+
+class _StatusPill extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final Color color;
+
+  const _StatusPill({
+    required this.label,
+    required this.icon,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: color.withValues(alpha: 0.35)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: color),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: color,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -1238,86 +2075,110 @@ class _SpinnerArcsState extends State<_SpinnerArcs>
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _controller,
-      builder: (context, child) {
-        return SizedBox(
-          width: 80,
-          height: 80,
-          child: TweenAnimationBuilder<Color?>(
-            tween: ColorTween(begin: widget.color, end: widget.color),
-            duration: const Duration(milliseconds: 300),
-            builder: (context, color, _) {
-              return CustomPaint(
-                painter: _ArcPainter(
-                  progress: _controller.value,
-                  color: color ?? widget.color,
+    final outerTurns = Tween<double>(begin: 0, end: 1).animate(_controller);
+    final middleTurns = Tween<double>(begin: 0, end: -2).animate(_controller);
+    final innerTurns = Tween<double>(begin: 0, end: 3).animate(_controller);
+
+    return SizedBox(
+      width: 80,
+      height: 80,
+      child: RepaintBoundary(
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            RotationTransition(
+              turns: outerTurns,
+              child: SizedBox(
+                width: 80,
+                height: 80,
+                child: CustomPaint(
+                  painter: _StaticArcPainter(
+                    sweepAngle: math.pi * 0.8,
+                    strokeWidth: 2.5,
+                    alpha: 0.30,
+                    color: widget.color,
+                  ),
                 ),
-              );
-            },
-          ),
-        );
-      },
+              ),
+            ),
+            RotationTransition(
+              turns: middleTurns,
+              child: SizedBox(
+                width: 56,
+                height: 56,
+                child: CustomPaint(
+                  painter: _StaticArcPainter(
+                    sweepAngle: math.pi * 0.6,
+                    strokeWidth: 2.5,
+                    alpha: 0.55,
+                    color: widget.color,
+                  ),
+                ),
+              ),
+            ),
+            RotationTransition(
+              turns: innerTurns,
+              child: SizedBox(
+                width: 36,
+                height: 36,
+                child: CustomPaint(
+                  painter: _StaticArcPainter(
+                    sweepAngle: math.pi * 0.5,
+                    strokeWidth: 2.5,
+                    alpha: 1.0,
+                    color: widget.color,
+                  ),
+                ),
+              ),
+            ),
+            Container(
+              width: 10,
+              height: 10,
+              decoration: BoxDecoration(
+                color: widget.color.withValues(alpha: 0.9),
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: widget.color.withValues(alpha: 0.35),
+                    blurRadius: 8,
+                    spreadRadius: 1,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
 
-class _ArcPainter extends CustomPainter {
-  final double progress;
+class _StaticArcPainter extends CustomPainter {
+  final double sweepAngle;
+  final double strokeWidth;
+  final double alpha;
   final Color color;
-  
-  const _ArcPainter({required this.progress, required this.color});
+
+  const _StaticArcPainter({
+    required this.sweepAngle,
+    required this.strokeWidth,
+    required this.alpha,
+    required this.color,
+  });
 
   @override
   void paint(Canvas canvas, Size size) {
     final center = Offset(size.width / 2, size.height / 2);
-
-    // Outer arc — slow, wide sweep
-    _drawArc(canvas, center, size.width / 2 - 2,
-        progress * 2 * math.pi,
-        sweepAngle: math.pi * 0.8,
-        color: color.withValues(alpha: 0.3),
-        strokeWidth: 2.5);
-
-    // Middle arc — reverse, narrower
-    _drawArc(canvas, center, size.width / 2 - 12,
-        -progress * 1.5 * 2 * math.pi,
-        sweepAngle: math.pi * 0.6,
-        color: color.withValues(alpha: 0.55),
-        strokeWidth: 2.5);
-
-    // Inner arc — fast, narrow
-    _drawArc(canvas, center, size.width / 2 - 22,
-        progress * 3 * 2 * math.pi,
-        sweepAngle: math.pi * 0.5,
-        color: color,
-        strokeWidth: 2.5);
-
-    // Center dot with glow
-    final dotPaint = Paint()
-      ..color = color
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4);
-    canvas.drawCircle(center, 5, dotPaint);
-    canvas.drawCircle(center, 4, Paint()..color = color);
-  }
-
-  void _drawArc(
-    Canvas canvas,
-    Offset center,
-    double radius,
-    double startAngle, {
-    required double sweepAngle,
-    required Color color,
-    required double strokeWidth,
-  }) {
+    final radius = (size.shortestSide / 2) - (strokeWidth / 2);
     final paint = Paint()
-      ..color = color
+      ..color = color.withValues(alpha: alpha)
       ..style = PaintingStyle.stroke
       ..strokeWidth = strokeWidth
       ..strokeCap = StrokeCap.round;
+
     canvas.drawArc(
       Rect.fromCircle(center: center, radius: radius),
-      startAngle,
+      -math.pi / 2,
       sweepAngle,
       false,
       paint,
@@ -1325,18 +2186,44 @@ class _ArcPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_ArcPainter old) => 
-      old.progress != progress || old.color != color;
+  bool shouldRepaint(_StaticArcPainter oldDelegate) {
+    return oldDelegate.sweepAngle != sweepAngle ||
+        oldDelegate.strokeWidth != strokeWidth ||
+        oldDelegate.alpha != alpha ||
+        oldDelegate.color != color;
+  }
 }
 
-class _AnimatedSlicingBlock extends StatelessWidget {
-  final AnimationController controller;
+class _AnimatedProcessingBlock extends StatefulWidget {
   final Color primaryColor;
 
-  const _AnimatedSlicingBlock({
-    required this.controller,
+  const _AnimatedProcessingBlock({
     required this.primaryColor,
   });
+
+  @override
+  State<_AnimatedProcessingBlock> createState() =>
+      _AnimatedProcessingBlockState();
+}
+
+class _AnimatedProcessingBlockState extends State<_AnimatedProcessingBlock>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2500),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1344,10 +2231,9 @@ class _AnimatedSlicingBlock extends StatelessWidget {
       width: 120,
       height: 120,
       child: AnimatedBuilder(
-        animation: controller,
+        animation: _controller,
         builder: (context, _) {
-          final progress = controller.value;
-          // Smooth easing for slice count, with a pop-out separation
+          final progress = _controller.value;
           final countT = Curves.easeInOut.transform(progress);
           final popT = Curves.easeOutBack.transform(progress);
           final numSlices = (countT * 6).toInt() + 1;
@@ -1355,7 +2241,7 @@ class _AnimatedSlicingBlock extends StatelessWidget {
 
           return CustomPaint(
             painter: _CubeSlicePainter(
-              primaryColor: primaryColor,
+              primaryColor: widget.primaryColor,
               sliceCount: numSlices,
               separation: separation,
             ),
@@ -1490,4 +2376,7 @@ class _CubeSlicePainter extends CustomPainter {
         oldDelegate.separation != separation ||
         oldDelegate.primaryColor != primaryColor;
   }
+
 }
+
+

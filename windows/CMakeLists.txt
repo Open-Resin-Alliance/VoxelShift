@@ -1,6 +1,6 @@
 # Project-level configuration.
 cmake_minimum_required(VERSION 3.14)
-project(voxelshift LANGUAGES CXX)
+project(voxelshift LANGUAGES C CXX)
 
 # The name of the executable created for the application. Change this to change
 # the on-disk name of your application.
@@ -52,6 +52,23 @@ add_subdirectory(${FLUTTER_MANAGED_DIR})
 # Application build; see runner/CMakeLists.txt.
 add_subdirectory("runner")
 
+# Native C acceleration library used via Dart FFI.
+add_library(area_stats SHARED
+  "../native/gpu_accel.c"
+  "../native/gpu_cuda_tensor_scanline.c"
+  "../native/gpu_opencl_scanline.c"
+  "../native/area_stats.c"
+  "../native/rle_decode.c"
+  "../native/png_encode.c"
+  "../native/png_recompress.c"
+  "../native/layer_pipeline.c"
+  "../native/thread_priority.c"
+  "../native/zip_writer.c"
+)
+set_target_properties(area_stats PROPERTIES
+  OUTPUT_NAME "area_stats"
+)
+
 
 # Generated plugin build rules, which manage building the plugins and adding
 # them to the application.
@@ -73,6 +90,11 @@ set(INSTALL_BUNDLE_DATA_DIR "${CMAKE_INSTALL_PREFIX}/data")
 set(INSTALL_BUNDLE_LIB_DIR "${CMAKE_INSTALL_PREFIX}")
 
 install(TARGETS ${BINARY_NAME} RUNTIME DESTINATION "${CMAKE_INSTALL_PREFIX}"
+  COMPONENT Runtime)
+
+install(TARGETS area_stats
+  RUNTIME DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
+  LIBRARY DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
   COMPONENT Runtime)
 
 install(FILES "${FLUTTER_ICU_DATA_FILE}" DESTINATION "${INSTALL_BUNDLE_DATA_DIR}"

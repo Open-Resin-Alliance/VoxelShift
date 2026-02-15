@@ -5,6 +5,7 @@ import 'package:archive/archive.dart';
 
 import '../models/layer_area_info.dart';
 import '../models/nanodlp_metadata.dart';
+import 'native_zip_writer.dart';
 
 /// Writes a NanoDLP-compatible plate file (ZIP with PNG layers + JSON metadata).
 ///
@@ -60,27 +61,52 @@ class NanoDlpFileWriter {
       (metadata.layerCount * metadata.layerHeightMm).toStringAsFixed(4)
     );
 
-    final archive = Archive();
-
-    // ── plate.json ──────────────────────────────────────
-    _addJson(archive, 'plate.json', _buildPlateJson(
+    // ── Build JSON blobs once (shared by native and fallback paths) ──
+    final plateJson = _encodeJson(_buildPlateJson(
       totalSolidArea: totalSolidArea,
       layersCount: layers.length,
       xMin: xMin, xMax: xMax, yMin: yMin, yMax: yMax, zMax: zMax,
     ));
 
-    // ── profile.json ────────────────────────────────────
-    _addJson(archive, 'profile.json', _buildProfileJson(metadata));
+    final profileJson = _encodeJson(_buildProfileJson(metadata));
 
-    // ── info.json ───────────────────────────────────────
+    Uint8List? infoJson;
     if (layerAreaInfos != null && layerAreaInfos.isNotEmpty) {
-      _addJson(archive, 'info.json',
-        layerAreaInfos.map((a) => a.toJson()).toList(),
-      );
+      infoJson = _encodeJson(layerAreaInfos.map((a) => a.toJson()).toList());
     }
 
-    // ── options.json ────────────────────────────────────
-    _addJson(archive, 'options.json', _buildOptionsJson(metadata));
+    final optionsJson = _encodeJson(_buildOptionsJson(metadata));
+
+    final nativeEntries = <NativeZipEntry>[
+      NativeZipEntry(name: 'plate.json', data: plateJson),
+      NativeZipEntry(name: 'profile.json', data: profileJson),
+      if (infoJson != null) NativeZipEntry(name: 'info.json', data: infoJson),
+      NativeZipEntry(name: 'options.json', data: optionsJson),
+      if (metadata.thumbnailPng != null && metadata.thumbnailPng!.isNotEmpty)
+        NativeZipEntry(name: '3d.png', data: metadata.thumbnailPng!),
+    ];
+
+    for (int i = 0; i < layers.length; i++) {
+      nativeEntries.add(NativeZipEntry(name: '${i + 1}.png', data: layers[i]));
+    }
+
+    final usedNative = await NativeZipWriter.instance.writeArchive(
+      outputPath,
+      nativeEntries,
+      onProgress: onProgress,
+    );
+
+    if (usedNative) {
+      return;
+    }
+
+    final archive = Archive();
+    archive.addFile(ArchiveFile('plate.json', plateJson.length, plateJson));
+    archive.addFile(ArchiveFile('profile.json', profileJson.length, profileJson));
+    if (infoJson != null) {
+      archive.addFile(ArchiveFile('info.json', infoJson.length, infoJson));
+    }
+    archive.addFile(ArchiveFile('options.json', optionsJson.length, optionsJson));
 
     // ── 3d.png (thumbnail) ──────────────────────────────
     if (metadata.thumbnailPng != null && metadata.thumbnailPng!.isNotEmpty) {
@@ -119,13 +145,16 @@ class NanoDlpFileWriter {
       }
     }
 
-    // Write ZIP to temp file, then atomically rename
+    // Write ZIP to temp file, then atomically rename.
+    // PNG layers are already DEFLATE-compressed, so re-compressing the whole
+    // archive at level 9 adds a lot of CPU time for limited gains.
+    // Use low compression for much faster packaging on large jobs.
     final tempPath = '$outputPath.tmp';
     
     // Yield before expensive ZIP encoding
     await Future.delayed(Duration.zero);
     
-    final zipData = ZipEncoder().encode(archive, level: 9);
+    final zipData = ZipEncoder().encode(archive, level: 1);
 
     final tempFile = File(tempPath);
     await tempFile.writeAsBytes(zipData);
@@ -136,10 +165,9 @@ class NanoDlpFileWriter {
     await tempFile.rename(outputPath);
   }
 
-  void _addJson(Archive archive, String name, Object data) {
+  Uint8List _encodeJson(Object data) {
     final jsonStr = const JsonEncoder.withIndent('  ').convert(data);
-    final bytes = utf8.encode(jsonStr);
-    archive.addFile(ArchiveFile(name, bytes.length, bytes));
+    return Uint8List.fromList(utf8.encode(jsonStr));
   }
 
   Map<String, dynamic> _buildPlateJson({
