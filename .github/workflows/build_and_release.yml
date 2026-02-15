@@ -1,4 +1,4 @@
-name: Build & Release MSI
+name: Build & Release (MSI + macOS)
 
 on:
   push:
@@ -83,6 +83,83 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: ${{ env.MSI_PATH }}
+          generate_release_notes: true
+          draft: false
+          prerelease: false
+
+  build-macos:
+    name: Build macOS App
+    runs-on: macos-latest
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Cache Pub packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.pub-cache
+          key: ${{ runner.os }}-pub-${{ hashFiles('**/pubspec.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-pub-
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build macOS Release
+        run: flutter build macos --release
+
+      - name: Create macOS DMG
+        run: |
+          # Create DMG using create-dmg if available, otherwise use hdiutil
+          cd build/macos/Build/Products/Release
+          
+          # Create a temporary directory for DMG contents
+          mkdir -p VoxelShift_DMG
+          cp -r VoxelShift.app VoxelShift_DMG/
+          
+          # Create symlink to Applications folder in DMG
+          ln -s /Applications VoxelShift_DMG/Applications
+          
+          # Create the DMG file
+          hdiutil create -volname "VoxelShift" -srcfolder VoxelShift_DMG -ov -format UDZO -o VoxelShift.dmg
+          
+          # Move DMG to a more accessible location
+          mv VoxelShift.dmg ../../../../../VoxelShift.dmg
+
+      - name: Create ZIP Archive (alternative to DMG)
+        run: |
+          cd build/macos/Build/Products/Release
+          zip -r ../../../../VoxelShift-macOS.zip VoxelShift.app
+
+      - name: Upload DMG Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: VoxelShift-macOS-DMG
+          path: build/macos/Build/Products/Release/VoxelShift.dmg
+
+      - name: Upload ZIP Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: VoxelShift-macOS-ZIP
+          path: VoxelShift-macOS.zip
+
+      - name: Create Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            build/macos/Build/Products/Release/VoxelShift.dmg
+            VoxelShift-macOS.zip
           generate_release_notes: true
           draft: false
           prerelease: false
