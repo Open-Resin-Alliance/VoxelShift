@@ -16,7 +16,12 @@ class ConversionProgress {
   final int total;
   final String phase;
   final int? workers;
-  const ConversionProgress(this.current, this.total, this.phase, {this.workers});
+  const ConversionProgress(
+    this.current,
+    this.total,
+    this.phase, {
+    this.workers,
+  });
 
   double get fraction => total > 0 ? current / total : 0;
 }
@@ -40,16 +45,24 @@ class CtbToNanoDlpConverter {
   Future<SliceFileInfo> readFileInfo(String ctbPath) async {
     final parser = await CtbParser.open(ctbPath);
     try {
-      Uint8List? thumbnail;
+      var thumbnailPair = ThumbnailPair(
+        guiThumbnail: null,
+        nanodlpThumbnail: null,
+      );
       try {
-        thumbnail = await parser.readPreviewLarge();
-        thumbnail ??= await parser.readPreviewSmall();
-        
+        var rawThumbnail = await parser.readPreviewLarge();
+        rawThumbnail ??= await parser.readPreviewSmall();
+
         // Process thumbnail: crop black borders & generate VoxelShift branding
-        thumbnail = ThumbnailProcessor.processThumbail(thumbnail);
+        if (rawThumbnail != null) {
+          thumbnailPair = ThumbnailProcessor.processThumbail(rawThumbnail);
+        }
       } catch (_) {}
 
-      return parser.toSliceFileInfo(ctbPath, thumbnail: thumbnail);
+      return parser.toSliceFileInfo(
+        ctbPath,
+        thumbnail: thumbnailPair.guiThumbnail,
+      );
     } finally {
       await parser.close();
     }
@@ -61,29 +74,29 @@ class CtbToNanoDlpConverter {
   Future<List<int>> checkForCorruptLayers(String ctbPath) async {
     final parser = await CtbParser.open(ctbPath);
     final corruptLayers = <int>[];
-    
+
     try {
       final totalLayers = parser.layerCount;
       if (totalLayers == 0) return corruptLayers;
-      
+
       // Sample layers: first, middle, and evenly spaced
       // Skip last layer - some slicers add empty padding layers at the end which is okay
       final samplesToCheck = <int>{};
       samplesToCheck.add(0); // First layer
       if (totalLayers > 2) samplesToCheck.add(totalLayers ~/ 2); // Middle
-      
+
       // Add evenly spaced samples (up to 10 total), but don't include last
       final step = (totalLayers / 10).ceil();
       final maxLayer = totalLayers - 2; // Exclude last layer
       for (var i = 0; i <= maxLayer && samplesToCheck.length < 10; i += step) {
         samplesToCheck.add(i);
       }
-      
+
       for (final layerIdx in samplesToCheck) {
         try {
           final layerData = await parser.readLayerImage(layerIdx);
           if (layerData.isEmpty) continue;
-          
+
           // Check if all pixels are same value (0 = fully black, 255 = fully white)
           final firstPixel = layerData[0];
           if (firstPixel == 0 || firstPixel == 255) {
@@ -100,7 +113,7 @@ class CtbToNanoDlpConverter {
     } finally {
       await parser.close();
     }
-    
+
     return corruptLayers;
   }
 
@@ -122,32 +135,44 @@ class CtbToNanoDlpConverter {
     receivePort.listen((message) {
       if (message is WorkerProgress) {
         onProgress?.call(
-            ConversionProgress(message.current, message.total, message.phase,
-                workers: message.workers));
+          ConversionProgress(
+            message.current,
+            message.total,
+            message.phase,
+            workers: message.workers,
+          ),
+        );
       } else if (message is WorkerLog) {
         _log(message.text);
       } else if (message is WorkerBenchmarkUpdate) {
-        settings.benchmarkCache[message.key] =
-            BenchmarkCacheEntry.fromJson(Map<String, dynamic>.from(message.entry));
+        settings.benchmarkCache[message.key] = BenchmarkCacheEntry.fromJson(
+          Map<String, dynamic>.from(message.entry),
+        );
         settings.save();
       } else if (message is WorkerAnalyticsUpdate) {
         final report = ConversionAnalytics.fromWorkerMap(
           Map<String, dynamic>.from(message.data),
         );
         AnalyticsBus.update(report);
-        
+
         // Auto-optimize worker count after first run (ONE-TIME only)
         // Once cpuHostWorkers is set, this won't run again - prevents
         // continuously optimizing down to fewer workers
         if (settings.postProcessing.cpuHostWorkers == null) {
-          final optimal = report.calculateOptimalWorkerCount();
+          final maxMultiplier =
+              settings.postProcessing.workerMultiplierCap ?? 2.0;
+          final optimal = report.calculateOptimalWorkerCount(
+            maxMultiplier: maxMultiplier,
+          );
           if (optimal != report.workers && optimal > 0) {
             settings.postProcessing.cpuHostWorkers = optimal;
             settings.save();
-            _log('Auto-optimized worker count: ${report.workers} → $optimal (future runs will use $optimal)');
+            _log(
+              'Auto-optimized worker count: ${report.workers} → $optimal (future runs will use $optimal)',
+            );
           }
         }
-        
+
         _cpuNameFuture ??= _readCpuName();
         _cpuNameFuture?.then((name) {
           if (name == null || name.isEmpty) return;
@@ -190,10 +215,10 @@ class CtbToNanoDlpConverter {
   static Future<String?> _readCpuName() async {
     try {
       if (Platform.isMacOS) {
-        final result = await Process.run(
-          'sysctl',
-          ['-n', 'machdep.cpu.brand_string'],
-        );
+        final result = await Process.run('sysctl', [
+          '-n',
+          'machdep.cpu.brand_string',
+        ]);
         if (result.exitCode == 0) {
           final name = (result.stdout as String).trim();
           if (name.isNotEmpty) return name;
