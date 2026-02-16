@@ -70,14 +70,14 @@ class _ThreadStat {
   }
 
   Map<String, dynamic> toJson(int index) => {
-        'index': index,
-        'layers': layers,
-        'totalNs': totalNs,
-        'decodeNs': decodeNs,
-        'scanlineNs': scanlineNs,
-        'compressNs': compressNs,
-        'pngNs': pngNs,
-      };
+    'index': index,
+    'layers': layers,
+    'totalNs': totalNs,
+    'decodeNs': decodeNs,
+    'scanlineNs': scanlineNs,
+    'compressNs': compressNs,
+    'pngNs': pngNs,
+  };
 }
 
 class _AnalyticsCollector {
@@ -139,7 +139,7 @@ class _AnalyticsCollector {
       'stagesNs': _stageNs,
       'nativeStagesNs': nativeTotals,
       'threadStats': [
-        for (int i = 0; i < _threads.length; i++) _threads[i].toJson(i)
+        for (int i = 0; i < _threads.length; i++) _threads[i].toJson(i),
       ],
     };
   }
@@ -224,64 +224,81 @@ Future<void> conversionWorkerEntry(ConversionWorkerRequest req) async {
     analytics.addStage('open', openSw.elapsed);
 
     try {
-      Uint8List? thumbnail;
+      ThumbnailPair? thumbnailPair;
       try {
-        thumbnail = await parser.readPreviewLarge();
+        var thumbnail = await parser.readPreviewLarge();
         thumbnail ??= await parser.readPreviewSmall();
-        
+
         // Process thumbnail: crop black borders & generate VoxelShift branding
-        thumbnail = ThumbnailProcessor.processThumbail(thumbnail);
+        thumbnailPair = ThumbnailProcessor.processThumbail(thumbnail);
       } catch (_) {}
 
-      final info = parser.toSliceFileInfo(req.ctbPath, thumbnail: thumbnail);
-      log('Detected: ${info.resolutionX}x${info.resolutionY} '
-          '(${info.detectedResolutionLabel}), '
-          '${info.layerCount} layers, ${info.layerHeight}mm layer height');
+      final info = parser.toSliceFileInfo(
+        req.ctbPath,
+        thumbnail: thumbnailPair?.guiThumbnail,
+      );
+      log(
+        'Detected: ${info.resolutionX}x${info.resolutionY} '
+        '(${info.detectedResolutionLabel}), '
+        '${info.layerCount} layers, ${info.layerHeight}mm layer height',
+      );
 
       // ── 2. Validate & profile ─────────────────────────────
-      final (valid, validationError) =
-          PrinterProfileDetector.validateResolution(
-              info.resolutionX, info.resolutionY);
+      final (
+        valid,
+        validationError,
+      ) = PrinterProfileDetector.validateResolution(
+        info.resolutionX,
+        info.resolutionY,
+      );
       if (!valid) {
         _sendFail(port, req, info, sw.elapsed, validationError!);
         return;
       }
 
-      final targetProfile = req.targetProfile ??
+      final targetProfile =
+          req.targetProfile ??
           PrinterProfileDetector.detectTargetProfile(
-              info.resolutionX, info.resolutionY);
+            info.resolutionX,
+            info.resolutionY,
+          );
       if (targetProfile == null) {
-        _sendFail(port, req, info, sw.elapsed,
-            'Could not determine target printer for resolution '
-            '${info.resolutionX}x${info.resolutionY}.');
+        _sendFail(
+          port,
+          req,
+          info,
+          sw.elapsed,
+          'Could not determine target printer for resolution '
+          '${info.resolutionX}x${info.resolutionY}.',
+        );
         return;
       }
 
-      log('Target profile: ${targetProfile.name} '
-          '(board: ${targetProfile.board.name}, '
-          'max Z: ${targetProfile.maxZHeight}mm)');
+      log(
+        'Target profile: ${targetProfile.name} '
+        '(board: ${targetProfile.board.name}, '
+        'max Z: ${targetProfile.maxZHeight}mm)',
+      );
 
       // Optional native GPU backend toggle/detection (safe no-op when unavailable).
       final gpu = NativeGpuAccel.instance;
       bool gpuRequested = false;
       bool gpuAccelActive = false;
       int gpuBackendCode = 0;
-        final gpuMode = (_settingString(
-          settings,
-          'gpuMode',
-          envKey: 'VOXELSHIFT_GPU_MODE',
-          ) ??
-          'auto')
-          .toLowerCase()
-          .trim();
-        final gpuBackendPrefEnv = (_settingString(
-          settings,
-          'gpuBackend',
-          envKey: 'VOXELSHIFT_GPU_BACKEND',
-          ) ??
-          'auto')
-          .toLowerCase()
-          .trim();
+      final gpuMode =
+          (_settingString(settings, 'gpuMode', envKey: 'VOXELSHIFT_GPU_MODE') ??
+                  'auto')
+              .toLowerCase()
+              .trim();
+      final gpuBackendPrefEnv =
+          (_settingString(
+                    settings,
+                    'gpuBackend',
+                    envKey: 'VOXELSHIFT_GPU_BACKEND',
+                  ) ??
+                  'auto')
+              .toLowerCase()
+              .trim();
       final preferredBackendCode = switch (gpuBackendPrefEnv) {
         'opencl' => 1,
         'metal' => 2,
@@ -289,7 +306,8 @@ Future<void> conversionWorkerEntry(ConversionWorkerRequest req) async {
         _ => 0,
       };
       if (gpu.available) {
-        final gpuEnv = (Platform.environment['VOXELSHIFT_USE_GPU'] ?? '').toLowerCase();
+        final gpuEnv = (Platform.environment['VOXELSHIFT_USE_GPU'] ?? '')
+            .toLowerCase();
         // Selection priority:
         // 1) VOXELSHIFT_GPU_MODE = cpu|gpu|auto
         // 2) legacy VOXELSHIFT_USE_GPU (1/0)
@@ -306,24 +324,37 @@ Future<void> conversionWorkerEntry(ConversionWorkerRequest req) async {
         gpu.setPreferredBackend(preferredBackendCode);
         gpu.setEnabled(gpuRequested);
         gpuBackendCode = gpu.backendCode;
-        gpuAccelActive = gpu.active && (gpuBackendCode == 1 || gpuBackendCode == 3);
-        log('GPU backend: ${gpu.backendName} '
-            '(mode: $gpuMode, requested: ${gpuRequested ? 'yes' : 'no'}, '
-            'active: ${gpu.active ? 'yes' : 'no'})');
-        log('GPU backend availability: '
-            'CUDA/Tensor=${gpu.isBackendAvailable(3) ? 'yes' : 'no'}, '
-            'OpenCL=${gpu.isBackendAvailable(1) ? 'yes' : 'no'} '
-            '(preferred: ${gpuBackendPrefEnv.toUpperCase()})');
+        gpuAccelActive =
+            gpu.active && (gpuBackendCode == 1 || gpuBackendCode == 3);
+        log(
+          'GPU backend: ${gpu.backendName} '
+          '(mode: $gpuMode, requested: ${gpuRequested ? 'yes' : 'no'}, '
+          'active: ${gpu.active ? 'yes' : 'no'})',
+        );
+        log(
+          'GPU backend availability: '
+          'CUDA/Tensor=${gpu.isBackendAvailable(3) ? 'yes' : 'no'}, '
+          'OpenCL=${gpu.isBackendAvailable(1) ? 'yes' : 'no'} '
+          '(preferred: ${gpuBackendPrefEnv.toUpperCase()})',
+        );
 
         // Log CUDA device info if available
         final nativeBatchInfo = NativeLayerBatchProcess.instance;
         if (nativeBatchInfo.cudaInit()) {
           log('CUDA device: ${nativeBatchInfo.cudaDeviceName}');
-          log('  VRAM: ${(nativeBatchInfo.cudaVramBytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB');
-          log('  Compute capability: ${nativeBatchInfo.cudaComputeCapability ~/ 10}.${nativeBatchInfo.cudaComputeCapability % 10}');
+          log(
+            '  VRAM: ${(nativeBatchInfo.cudaVramBytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB',
+          );
+          log(
+            '  Compute capability: ${nativeBatchInfo.cudaComputeCapability ~/ 10}.${nativeBatchInfo.cudaComputeCapability % 10}',
+          );
           log('  SMs: ${nativeBatchInfo.cudaMultiprocessorCount}');
-          log('  Tensor cores: ${nativeBatchInfo.cudaHasTensorCores ? "yes" : "no"}');
-          log('  Phased pipeline: ${nativeBatchInfo.phasedAvailable ? "available" : "not available"}');
+          log(
+            '  Tensor cores: ${nativeBatchInfo.cudaHasTensorCores ? "yes" : "no"}',
+          );
+          log(
+            '  Phased pipeline: ${nativeBatchInfo.phasedAvailable ? "available" : "not available"}',
+          );
         }
       } else {
         log('GPU backend: unavailable');
@@ -332,9 +363,14 @@ Future<void> conversionWorkerEntry(ConversionWorkerRequest req) async {
       final maxZ = req.maxZHeightOverride ?? targetProfile.maxZHeight;
       final printHeight = info.layerCount * info.layerHeight;
       if (printHeight > maxZ) {
-        _sendFail(port, req, info, sw.elapsed,
-            'Print height (${printHeight.toStringAsFixed(2)}mm) exceeds '
-            'target max Z (${maxZ.toStringAsFixed(0)}mm).');
+        _sendFail(
+          port,
+          req,
+          info,
+          sw.elapsed,
+          'Print height (${printHeight.toStringAsFixed(2)}mm) exceeds '
+          'target max Z (${maxZ.toStringAsFixed(0)}mm).',
+        );
         return;
       }
 
@@ -346,8 +382,8 @@ Future<void> conversionWorkerEntry(ConversionWorkerRequest req) async {
       final layerAreas = <LayerAreaInfo>[];
 
       // Preload only for small jobs; stream for large jobs to cap RAM.
-      final shouldPreload = _envIsTruthy('VOXELSHIFT_PRELOAD_LAYERS') ||
-          info.layerCount <= 200;
+      final shouldPreload =
+          _envIsTruthy('VOXELSHIFT_PRELOAD_LAYERS') || info.layerCount <= 200;
 
       final rawLayers = <Uint8List>[];
       final readSw = Stopwatch();
@@ -369,7 +405,7 @@ Future<void> conversionWorkerEntry(ConversionWorkerRequest req) async {
 
       final nativeBatch = NativeLayerBatchProcess.instance;
       nativeBatch.setAnalyticsEnabled(analyticsEnabled);
-        final outWidth = targetProfile.pngOutputWidth;
+      final outWidth = targetProfile.pngOutputWidth;
       final outChannels = targetProfile.board == BoardType.rgb8Bit ? 3 : 1;
 
       final fastMode = _settingBool(
@@ -388,12 +424,17 @@ Future<void> conversionWorkerEntry(ConversionWorkerRequest req) async {
         return fastMode ? 0 : 1;
       })();
       if (fastMode) {
-        log('Fast mode enabled: using speed-first defaults '
-            '(process PNG level: $processPngLevel).');
+        log(
+          'Fast mode enabled: using speed-first defaults '
+          '(process PNG level: $processPngLevel).',
+        );
       }
 
       // Process in parallel using worker pool
-      var processingEngine = _processingEngineLabel(gpuAccelActive, gpuBackendCode);
+      var processingEngine = _processingEngineLabel(
+        gpuAccelActive,
+        gpuBackendCode,
+      );
       log('Processing engine: $processingEngine');
       log('Processing ${info.layerCount} layers...');
       progress(
@@ -426,7 +467,10 @@ Future<void> conversionWorkerEntry(ConversionWorkerRequest req) async {
             envKey: 'VOXELSHIFT_CUDA_HOST_WORKERS',
           );
           if (explicitCuda != null) {
-            return explicitCuda.clamp(1, math.min(256, math.max(1, layerCount)));
+            return explicitCuda.clamp(
+              1,
+              math.min(256, math.max(1, layerCount)),
+            );
           }
 
           // Auto-detect: query CUDA kernel for how many concurrent layers
@@ -463,8 +507,10 @@ Future<void> conversionWorkerEntry(ConversionWorkerRequest req) async {
             // Total threads = CUDA workers + enough CPU cores for decode/compress
             final cores = Platform.numberOfProcessors;
             final target = math.max(cudaWorkers, cores);
-            log('CUDA VRAM budget: $vramCap concurrent layers, '
-                'using $cudaWorkers CUDA + ${target - cudaWorkers} CPU-only workers.');
+            log(
+              'CUDA VRAM budget: $vramCap concurrent layers, '
+              'using $cudaWorkers CUDA + ${target - cudaWorkers} CPU-only workers.',
+            );
             return math.min(target, math.max(1, layerCount));
           }
 
@@ -472,8 +518,10 @@ Future<void> conversionWorkerEntry(ConversionWorkerRequest req) async {
           final cores = Platform.numberOfProcessors;
           final cudaWorkers = math.min(8, math.max(1, cores ~/ 2));
           final target = math.max(cudaWorkers, cores);
-          log('CUDA VRAM cap unavailable; using $cudaWorkers CUDA + '
-              '${target - cudaWorkers} CPU-only workers.');
+          log(
+            'CUDA VRAM cap unavailable; using $cudaWorkers CUDA + '
+            '${target - cudaWorkers} CPU-only workers.',
+          );
           return math.min(target, math.max(1, layerCount));
         }
 
@@ -485,13 +533,18 @@ Future<void> conversionWorkerEntry(ConversionWorkerRequest req) async {
       }
 
       if (gpuAccelActive) {
-        processingMaxConcurrency = gpuWorkersForBackend(gpuBackendCode, info.layerCount);
+        processingMaxConcurrency = gpuWorkersForBackend(
+          gpuBackendCode,
+          info.layerCount,
+        );
       }
 
       // Hybrid GPU mode: keep several host workers active so decode/area/zlib
       // stay parallel while scanline mapping uses GPU.
       if (gpuAccelActive) {
-        log('GPU mode enabled: hybrid CPU+GPU with $processingMaxConcurrency workers.');
+        log(
+          'GPU mode enabled: hybrid CPU+GPU with $processingMaxConcurrency workers.',
+        );
         if (gpuBackendCode == 3) {
           int vramCap = nativeBatch.cudaMaxConcurrentLayers(
             srcWidth: info.resolutionX,
@@ -514,20 +567,22 @@ Future<void> conversionWorkerEntry(ConversionWorkerRequest req) async {
               }
             }
           }
-          log('CUDA VRAM cap: $vramCap concurrent layers. '
-              'Override with VOXELSHIFT_CUDA_HOST_WORKERS or VOXELSHIFT_GPU_HOST_WORKERS.');
+          log(
+            'CUDA VRAM cap: $vramCap concurrent layers. '
+            'Override with VOXELSHIFT_CUDA_HOST_WORKERS or VOXELSHIFT_GPU_HOST_WORKERS.',
+          );
         }
       } else {
         log('CPU native mode with $processingMaxConcurrency workers.');
       }
 
-        final autoTuneEnabled = _settingBool(
-          settings,
-          'autotune',
-          envKey: 'VOXELSHIFT_AUTOTUNE',
-          defaultValue: true,
-        );
-        if (autoTuneEnabled &&
+      final autoTuneEnabled = _settingBool(
+        settings,
+        'autotune',
+        envKey: 'VOXELSHIFT_AUTOTUNE',
+        defaultValue: true,
+      );
+      if (autoTuneEnabled &&
           gpuMode == 'auto' &&
           nativeBatch.available &&
           info.layerCount >= 8) {
@@ -559,17 +614,28 @@ Future<void> conversionWorkerEntry(ConversionWorkerRequest req) async {
         final cacheEntry = _benchmarkCacheEntry(req.benchmarkCache, cacheKey);
         if (cacheEntry != null && !_benchmarkCacheStale(cacheEntry)) {
           final gpuAvailable = gpu.isBackendAvailable(cacheEntry.backend);
-          if (gpuRequested && gpuAvailable &&
-              cacheEntry.gpuMs > 0 && cacheEntry.cpuMs > 0 &&
+          if (gpuRequested &&
+              gpuAvailable &&
+              cacheEntry.gpuMs > 0 &&
+              cacheEntry.cpuMs > 0 &&
               cacheEntry.gpuMs < cacheEntry.cpuMs) {
             gpu.setPreferredBackend(cacheEntry.backend);
             gpu.setEnabled(true);
             gpuBackendCode = gpu.backendCode;
-            gpuAccelActive = gpu.active && (gpuBackendCode == 1 || gpuBackendCode == 3);
-            processingMaxConcurrency = gpuWorkersForBackend(gpuBackendCode, info.layerCount);
-            processingEngine = _processingEngineLabel(gpuAccelActive, gpuBackendCode);
-            log('Auto-tuner cache hit: selecting GPU '
-                '(${gpu.backendName}) [CPU: ${cacheEntry.cpuMs}ms, GPU: ${cacheEntry.gpuMs}ms].');
+            gpuAccelActive =
+                gpu.active && (gpuBackendCode == 1 || gpuBackendCode == 3);
+            processingMaxConcurrency = gpuWorkersForBackend(
+              gpuBackendCode,
+              info.layerCount,
+            );
+            processingEngine = _processingEngineLabel(
+              gpuAccelActive,
+              gpuBackendCode,
+            );
+            log(
+              'Auto-tuner cache hit: selecting GPU '
+              '(${gpu.backendName}) [CPU: ${cacheEntry.cpuMs}ms, GPU: ${cacheEntry.gpuMs}ms].',
+            );
             usedCache = true;
           } else if (cacheEntry.cpuMs > 0) {
             gpu.setPreferredBackend(0);
@@ -582,8 +648,10 @@ Future<void> conversionWorkerEntry(ConversionWorkerRequest req) async {
               settings: settings,
             );
             processingEngine = 'CPU Native';
-            log('Auto-tuner cache hit: selecting CPU '
-                '[CPU: ${cacheEntry.cpuMs}ms, GPU: ${cacheEntry.gpuMs}ms].');
+            log(
+              'Auto-tuner cache hit: selecting CPU '
+              '[CPU: ${cacheEntry.cpuMs}ms, GPU: ${cacheEntry.gpuMs}ms].',
+            );
             usedCache = true;
           }
           if (usedCache) {
@@ -597,7 +665,10 @@ Future<void> conversionWorkerEntry(ConversionWorkerRequest req) async {
           }
         }
 
-        Future<Duration?> benchmarkGpuBackend(int backendCode, String name) async {
+        Future<Duration?> benchmarkGpuBackend(
+          int backendCode,
+          String name,
+        ) async {
           if (!gpu.isBackendAvailable(backendCode)) {
             log('Auto-tuner: skip $name (not available).');
             progress(
@@ -621,7 +692,9 @@ Future<void> conversionWorkerEntry(ConversionWorkerRequest req) async {
           final active = gpu.active;
           final selected = gpu.backendCode;
           if (!active || selected != backendCode) {
-            log('Auto-tuner: skip $name (active=${active ? 'yes' : 'no'}, selected=$selected).');
+            log(
+              'Auto-tuner: skip $name (active=${active ? 'yes' : 'no'}, selected=$selected).',
+            );
             progress(
               0,
               info.layerCount,
@@ -633,8 +706,14 @@ Future<void> conversionWorkerEntry(ConversionWorkerRequest req) async {
           }
 
           final sw = Stopwatch()..start();
-          final backendGpuWorkersFinal = gpuWorkersForBackend(backendCode, info.layerCount);
-          final backendGpuWorkersBench = math.min(backendGpuWorkersFinal, sampleSize);
+          final backendGpuWorkersFinal = gpuWorkersForBackend(
+            backendCode,
+            info.layerCount,
+          );
+          final backendGpuWorkersBench = math.min(
+            backendGpuWorkersFinal,
+            sampleSize,
+          );
           final result = nativeBatch.processBatch(
             rawLayers: sample,
             layerIndexBase: 0,
@@ -656,14 +735,16 @@ Future<void> conversionWorkerEntry(ConversionWorkerRequest req) async {
           final attempts = nativeBatch.lastGpuAttempts;
           final successes = nativeBatch.lastGpuSuccesses;
           final fallbacks = nativeBatch.lastGpuFallbacks;
-            final cudaErr = nativeBatch.lastCudaError;
+          final cudaErr = nativeBatch.lastCudaError;
           final usagePct = attempts > 0
               ? ((successes * 100.0) / attempts).toStringAsFixed(1)
               : '0.0';
-          log('Auto-tuner: $name = ${sw.elapsedMilliseconds}ms '
-              '[workers: $backendGpuWorkersBench] '
-              '[GPU usage: $successes/$attempts (${usagePct}%, fallbacks: $fallbacks, '
-              'cuda_err: $cudaErr)]');
+          log(
+            'Auto-tuner: $name = ${sw.elapsedMilliseconds}ms '
+            '[workers: $backendGpuWorkersBench] '
+            '[GPU usage: $successes/$attempts (${usagePct}%, fallbacks: $fallbacks, '
+            'cuda_err: $cudaErr)]',
+          );
           return sw.elapsed;
         }
 
@@ -719,12 +800,15 @@ Future<void> conversionWorkerEntry(ConversionWorkerRequest req) async {
               if (bestGpuTime != null &&
                   cpuTime != null &&
                   bestGpuTime.inMicroseconds < cpuTime.inMicroseconds) {
-                log('Auto-tuner: skip ${c.$2} (already have a faster GPU backend).');
+                log(
+                  'Auto-tuner: skip ${c.$2} (already have a faster GPU backend).',
+                );
                 continue;
               }
               final t = await benchmarkGpuBackend(c.$1, c.$2);
               if (t != null &&
-                  (bestGpuTime == null || t.inMicroseconds < bestGpuTime.inMicroseconds)) {
+                  (bestGpuTime == null ||
+                      t.inMicroseconds < bestGpuTime.inMicroseconds)) {
                 bestGpuTime = t;
                 bestGpuBackend = c.$1;
               }
@@ -732,16 +816,27 @@ Future<void> conversionWorkerEntry(ConversionWorkerRequest req) async {
           }
         }
 
-        if (!usedCache && bestGpuTime != null &&
-            (cpuTime == null || bestGpuTime.inMicroseconds < cpuTime.inMicroseconds)) {
+        if (!usedCache &&
+            bestGpuTime != null &&
+            (cpuTime == null ||
+                bestGpuTime.inMicroseconds < cpuTime.inMicroseconds)) {
           gpu.setPreferredBackend(bestGpuBackend);
           gpu.setEnabled(true);
           gpuBackendCode = gpu.backendCode;
-          gpuAccelActive = gpu.active && (gpuBackendCode == 1 || gpuBackendCode == 3);
-          processingMaxConcurrency = gpuWorkersForBackend(gpuBackendCode, info.layerCount);
-          processingEngine = _processingEngineLabel(gpuAccelActive, gpuBackendCode);
-          log('Auto-tuner selected GPU (${gpu.backendName}) '
-              '[CPU: ${cpuTime?.inMilliseconds ?? -1}ms, GPU: ${bestGpuTime.inMilliseconds}ms].');
+          gpuAccelActive =
+              gpu.active && (gpuBackendCode == 1 || gpuBackendCode == 3);
+          processingMaxConcurrency = gpuWorkersForBackend(
+            gpuBackendCode,
+            info.layerCount,
+          );
+          processingEngine = _processingEngineLabel(
+            gpuAccelActive,
+            gpuBackendCode,
+          );
+          log(
+            'Auto-tuner selected GPU (${gpu.backendName}) '
+            '[CPU: ${cpuTime?.inMilliseconds ?? -1}ms, GPU: ${bestGpuTime.inMilliseconds}ms].',
+          );
           progress(
             0,
             info.layerCount,
@@ -756,8 +851,10 @@ Future<void> conversionWorkerEntry(ConversionWorkerRequest req) async {
           gpuAccelActive = false;
           processingMaxConcurrency = cpuWorkersFinal;
           processingEngine = 'CPU Native';
-          log('Auto-tuner selected CPU '
-              '[CPU: ${cpuTime?.inMilliseconds ?? -1}ms, GPU: ${bestGpuTime?.inMilliseconds ?? -1}ms].');
+          log(
+            'Auto-tuner selected CPU '
+            '[CPU: ${cpuTime?.inMilliseconds ?? -1}ms, GPU: ${bestGpuTime?.inMilliseconds ?? -1}ms].',
+          );
           progress(
             0,
             info.layerCount,
@@ -805,8 +902,9 @@ Future<void> conversionWorkerEntry(ConversionWorkerRequest req) async {
           gpu.setPreferredBackend(3);
           gpu.setEnabled(true);
         }
-        final phasedEngine =
-            useMegaBatchGpu ? 'Phased GPU Mega-Batch' : 'Phased CPU';
+        final phasedEngine = useMegaBatchGpu
+            ? 'Phased GPU Mega-Batch'
+            : 'Phased CPU';
         log('Using phased pipeline ($phasedEngine).');
 
         // CPU-appropriate thread count for decode + compress phases.
@@ -823,13 +921,15 @@ Future<void> conversionWorkerEntry(ConversionWorkerRequest req) async {
         bool phasedFailed = false;
         int nextLog = logStep;
 
-        progress(0, info.layerCount,
-            'Processing layers (phased)... [$phasedEngine]',
-            workers: phasedThreads, force: true);
+        progress(
+          0,
+          info.layerCount,
+          'Processing layers (phased)... [$phasedEngine]',
+          workers: phasedThreads,
+          force: true,
+        );
 
-        for (int start = 0;
-            start < info.layerCount;
-            start += phasedChunkSize) {
+        for (int start = 0; start < info.layerCount; start += phasedChunkSize) {
           final end = math.min(start + phasedChunkSize, info.layerCount);
           late final List<Uint8List> chunk;
           if (shouldPreload) {
@@ -863,8 +963,9 @@ Future<void> conversionWorkerEntry(ConversionWorkerRequest req) async {
           }
 
           final gpuBatchOk = nativeBatch.lastGpuBatchOk != 0;
-          processingEngine =
-              gpuBatchOk ? 'Phased GPU Mega-Batch' : 'Phased CPU';
+          processingEngine = gpuBatchOk
+              ? 'Phased GPU Mega-Batch'
+              : 'Phased CPU';
 
           for (final r in chunkResults) {
             layerImages.add(r.pngBytes);
@@ -872,9 +973,13 @@ Future<void> conversionWorkerEntry(ConversionWorkerRequest req) async {
           }
 
           done = end;
-          progress(done, info.layerCount,
-              'Processing layers (phased)... [$processingEngine]',
-              workers: phasedThreads, force: true);
+          progress(
+            done,
+            info.layerCount,
+            'Processing layers (phased)... [$processingEngine]',
+            workers: phasedThreads,
+            force: true,
+          );
           while (done >= nextLog && nextLog <= info.layerCount) {
             log('  Layer $nextLog/${info.layerCount}');
             nextLog += logStep;
@@ -888,8 +993,10 @@ Future<void> conversionWorkerEntry(ConversionWorkerRequest req) async {
           usedNativeBatch = true;
           log('Phased pipeline complete ($processingEngine).');
         } else {
-          log('Phased pipeline failed at layer $done '
-              '— falling back to chunked pipeline.');
+          log(
+            'Phased pipeline failed at layer $done '
+            '— falling back to chunked pipeline.',
+          );
           layerImages.clear();
           layerAreas.clear();
         }
@@ -914,12 +1021,12 @@ Future<void> conversionWorkerEntry(ConversionWorkerRequest req) async {
         // Process in medium native batches for smoother progress feedback
         // while keeping threading entirely in C.
         final nativeChunkSize = info.layerCount < 120
-          ? 24
-          : info.layerCount < 500
+            ? 24
+            : info.layerCount < 500
             ? 48
             : info.layerCount < 1500
-              ? 64
-              : 96;
+            ? 64
+            : 96;
 
         int done = 0;
         final chunkLogStep = (info.layerCount ~/ 4).clamp(1, info.layerCount);
@@ -971,8 +1078,13 @@ Future<void> conversionWorkerEntry(ConversionWorkerRequest req) async {
           }
 
           done = end;
-          progress(done, info.layerCount, 'Processing layers... [$processingEngine]',
-              workers: processingMaxConcurrency, force: true);
+          progress(
+            done,
+            info.layerCount,
+            'Processing layers... [$processingEngine]',
+            workers: processingMaxConcurrency,
+            force: true,
+          );
           while (done >= nextChunkLog && nextChunkLog <= info.layerCount) {
             log('  Layer $nextChunkLog/${info.layerCount}');
             nextChunkLog += chunkLogStep;
@@ -994,26 +1106,31 @@ Future<void> conversionWorkerEntry(ConversionWorkerRequest req) async {
           rawLayersForFallback = rawLayers;
         } else {
           final chunkReadSw = Stopwatch()..start();
-          rawLayersForFallback =
-              await _readRawLayerRange(parser, 0, info.layerCount);
+          rawLayersForFallback = await _readRawLayerRange(
+            parser,
+            0,
+            info.layerCount,
+          );
           chunkReadSw.stop();
           readStreamingTime += chunkReadSw.elapsed;
         }
 
         final tasks = <LayerTaskParams>[];
         for (int i = 0; i < info.layerCount; i++) {
-          tasks.add(LayerTaskParams(
-            layerIndex: i,
-            rawRleData: rawLayersForFallback[i],
-            encryptionKey: parser.encryptionKey,
-            resolutionX: info.resolutionX,
-            resolutionY: info.resolutionY,
-            xPixelSizeMm: xPix,
-            yPixelSizeMm: yPix,
-            boardTypeIndex: targetProfile.board.index,
-            targetWidth: targetProfile.pngOutputWidth,
-            pngLevel: processPngLevel,
-          ));
+          tasks.add(
+            LayerTaskParams(
+              layerIndex: i,
+              rawRleData: rawLayersForFallback[i],
+              encryptionKey: parser.encryptionKey,
+              resolutionX: info.resolutionX,
+              resolutionY: info.resolutionY,
+              xPixelSizeMm: xPix,
+              yPixelSizeMm: yPix,
+              boardTypeIndex: targetProfile.board.index,
+              targetWidth: targetProfile.pngOutputWidth,
+              pngLevel: processPngLevel,
+            ),
+          );
         }
 
         int? processingWorkers;
@@ -1031,8 +1148,12 @@ Future<void> conversionWorkerEntry(ConversionWorkerRequest req) async {
             );
           },
           onLayerComplete: (done, total) {
-            progress(done, total, 'Processing layers... [$processingEngine]',
-                workers: processingWorkers);
+            progress(
+              done,
+              total,
+              'Processing layers... [$processingEngine]',
+              workers: processingWorkers,
+            );
             if (done % (total ~/ 4).clamp(1, total) == 0 || done == total) {
               log('  Layer $done/$total');
             }
@@ -1051,32 +1172,43 @@ Future<void> conversionWorkerEntry(ConversionWorkerRequest req) async {
       if (!shouldPreload && readStreamingTime.inMicroseconds > 0) {
         analytics.addStage('read', readStreamingTime);
       }
-      log('Processing phase finished in '
-          '${(processingPhaseSw.elapsedMilliseconds / 1000).toStringAsFixed(2)}s '
-          '[$processingEngine].');
-        if (processingGpuAttempts > 0) {
+      log(
+        'Processing phase finished in '
+        '${(processingPhaseSw.elapsedMilliseconds / 1000).toStringAsFixed(2)}s '
+        '[$processingEngine].',
+      );
+      if (processingGpuAttempts > 0) {
         final usagePct =
-          ((processingGpuSuccesses * 100.0) / processingGpuAttempts).toStringAsFixed(1);
-          final cudaErr = nativeBatch.lastCudaError;
-        log('Processing GPU usage: $processingGpuSuccesses/$processingGpuAttempts '
-            '(${usagePct}%, fallbacks: $processingGpuFallbacks, cuda_err: $cudaErr).');
-        }
+            ((processingGpuSuccesses * 100.0) / processingGpuAttempts)
+                .toStringAsFixed(1);
+        final cudaErr = nativeBatch.lastCudaError;
+        log(
+          'Processing GPU usage: $processingGpuSuccesses/$processingGpuAttempts '
+          '(${usagePct}%, fallbacks: $processingGpuFallbacks, cuda_err: $cudaErr).',
+        );
+      }
 
       if (shouldPreload) {
         rawLayers.clear(); // free memory
       }
 
       // ── 3b. Recompress PNGs adaptively (expensive pass) ───
-      progress(0, info.layerCount, 'Preparing compression pass...', force: true);
-        final recompressModeRaw = _settingString(
-          settings,
-          'recompressMode',
-          envKey: 'VOXELSHIFT_RECOMPRESS_MODE',
-        );
-        final recompressMode =
-          ((recompressModeRaw == null || recompressModeRaw.trim().isEmpty) && fastMode
-              ? 'off'
-              : (recompressModeRaw ?? 'adaptive'))
+      progress(
+        0,
+        info.layerCount,
+        'Preparing compression pass...',
+        force: true,
+      );
+      final recompressModeRaw = _settingString(
+        settings,
+        'recompressMode',
+        envKey: 'VOXELSHIFT_RECOMPRESS_MODE',
+      );
+      final recompressMode =
+          ((recompressModeRaw == null || recompressModeRaw.trim().isEmpty) &&
+                      fastMode
+                  ? 'off'
+                  : (recompressModeRaw ?? 'adaptive'))
               .toLowerCase()
               .trim();
       final shouldRecompress = switch (recompressMode) {
@@ -1092,7 +1224,8 @@ Future<void> conversionWorkerEntry(ConversionWorkerRequest req) async {
       if (shouldRecompress) {
         final recompressSw = Stopwatch()..start();
         log('Recompressing ${layerImages.length} PNGs (adaptive pass)...');
-        final recompressWorkers = _positiveEnvInt('VOXELSHIFT_RECOMPRESS_WORKERS') ??
+        final recompressWorkers =
+            _positiveEnvInt('VOXELSHIFT_RECOMPRESS_WORKERS') ??
             _nativeWorkerTarget(
               layerCount: layerImages.length,
               gpuActive: false,
@@ -1116,8 +1249,12 @@ Future<void> conversionWorkerEntry(ConversionWorkerRequest req) async {
             );
           },
           onProgress: (done, total) {
-            progress(done, total, 'Compressing PNGs...',
-                workers: compressWorkers);
+            progress(
+              done,
+              total,
+              'Compressing PNGs...',
+              workers: compressWorkers,
+            );
             while (done >= nextCompressLog && nextCompressLog <= total) {
               log('  Compressed $nextCompressLog/$total');
               nextCompressLog += compressStep;
@@ -1132,15 +1269,19 @@ Future<void> conversionWorkerEntry(ConversionWorkerRequest req) async {
         }
         recompressSw.stop();
         analytics.addStage('recompress', recompressSw.elapsed);
-        log('Recompression phase finished in '
-            '${(recompressSw.elapsedMilliseconds / 1000).toStringAsFixed(2)}s.');
+        log(
+          'Recompression phase finished in '
+          '${(recompressSw.elapsedMilliseconds / 1000).toStringAsFixed(2)}s.',
+        );
       } else {
         log('Skipping PNG recompression (expected gain too small).');
       }
 
       // ── 4. Metadata ───────────────────────────────────────
       final sourceProfile = PrinterProfileDetector.detectSourceProfile(
-          info.resolutionX, info.resolutionY);
+        info.resolutionX,
+        info.resolutionY,
+      );
 
       final metadata = NanoDlpPlateMetadata(
         sourceFile: _fileName(req.ctbPath),
@@ -1162,14 +1303,12 @@ Future<void> conversionWorkerEntry(ConversionWorkerRequest req) async {
         retractSpeedMmPerMin: info.retractSpeed,
         xPixelSizeMm: xPix,
         yPixelSizeMm: yPix,
-        thumbnailPng: thumbnail,
+        thumbnailPng: thumbnailPair?.nanodlpThumbnail,
       );
 
       // ── 5. Write .nanodlp ZIP ─────────────────────────────
-      final outputDir =
-          req.outputDirectory ?? File(req.ctbPath).parent.path;
-      final outputName =
-          req.outputFileName ?? _fileNameWithoutExt(req.ctbPath);
+      final outputDir = req.outputDirectory ?? File(req.ctbPath).parent.path;
+      final outputName = req.outputFileName ?? _fileNameWithoutExt(req.ctbPath);
       final outputPath =
           '$outputDir${Platform.pathSeparator}$outputName.nanodlp';
 
@@ -1196,79 +1335,102 @@ Future<void> conversionWorkerEntry(ConversionWorkerRequest req) async {
       sw.stop();
       final fileSize = await File(outputPath).length();
 
-      log('Conversion complete: $outputPath '
-          '(${(fileSize / 1024 / 1024).toStringAsFixed(1)} MB) '
-          'in ${(sw.elapsedMilliseconds / 1000).toStringAsFixed(1)}s');
+      log(
+        'Conversion complete: $outputPath '
+        '(${(fileSize / 1024 / 1024).toStringAsFixed(1)} MB) '
+        'in ${(sw.elapsedMilliseconds / 1000).toStringAsFixed(1)}s',
+      );
 
       if (analyticsEnabled) {
-        port.send(WorkerAnalyticsUpdate(analytics.toMap(
-          cpuCores: Platform.numberOfProcessors,
-          workers: processingMaxConcurrency,
-          processingEngine: processingEngine,
-          gpuActive: gpuAccelActive,
-          gpuAttempts: processingGpuAttempts,
-          gpuSuccesses: processingGpuSuccesses,
-          gpuFallbacks: processingGpuFallbacks,
-        )));
+        port.send(
+          WorkerAnalyticsUpdate(
+            analytics.toMap(
+              cpuCores: Platform.numberOfProcessors,
+              workers: processingMaxConcurrency,
+              processingEngine: processingEngine,
+              gpuActive: gpuAccelActive,
+              gpuAttempts: processingGpuAttempts,
+              gpuSuccesses: processingGpuSuccesses,
+              gpuFallbacks: processingGpuFallbacks,
+            ),
+          ),
+        );
       }
 
-      port.send(WorkerDone(ConversionResult(
-        success: true,
-        outputPath: outputPath,
-        sourceInfo: info,
-        targetProfile: targetProfile,
-        layerCount: layerImages.length,
-        outputFileSizeBytes: fileSize,
-        duration: sw.elapsed,
-      )));
+      port.send(
+        WorkerDone(
+          ConversionResult(
+            success: true,
+            outputPath: outputPath,
+            sourceInfo: info,
+            targetProfile: targetProfile,
+            layerCount: layerImages.length,
+            outputFileSizeBytes: fileSize,
+            duration: sw.elapsed,
+          ),
+        ),
+      );
     } finally {
       await parser.close();
     }
   } catch (e) {
     log('ERROR: $e');
-    port.send(WorkerDone(ConversionResult(
-      success: false,
-      errorMessage: 'Conversion failed: $e',
-      outputPath: '',
-      sourceInfo: SliceFileInfo(
-        sourcePath: req.ctbPath,
-        resolutionX: 0,
-        resolutionY: 0,
-        displayWidth: 0,
-        displayHeight: 0,
-        machineZ: 0,
-        layerHeight: 0,
-        layerCount: 0,
-        bottomExposureTime: 0,
-        exposureTime: 0,
-        bottomLayerCount: 0,
-        liftHeight: 0,
-        liftSpeed: 0,
-        retractSpeed: 0,
+    port.send(
+      WorkerDone(
+        ConversionResult(
+          success: false,
+          errorMessage: 'Conversion failed: $e',
+          outputPath: '',
+          sourceInfo: SliceFileInfo(
+            sourcePath: req.ctbPath,
+            resolutionX: 0,
+            resolutionY: 0,
+            displayWidth: 0,
+            displayHeight: 0,
+            machineZ: 0,
+            layerHeight: 0,
+            layerCount: 0,
+            bottomExposureTime: 0,
+            exposureTime: 0,
+            bottomLayerCount: 0,
+            liftHeight: 0,
+            liftSpeed: 0,
+            retractSpeed: 0,
+          ),
+          targetProfile: req.targetProfile ?? PrinterProfile.athena2_16K,
+          layerCount: 0,
+          outputFileSizeBytes: 0,
+          duration: sw.elapsed,
+        ),
       ),
-      targetProfile: req.targetProfile ?? PrinterProfile.athena2_16K,
-      layerCount: 0,
-      outputFileSizeBytes: 0,
-      duration: sw.elapsed,
-    )));
+    );
   }
 }
 
 // ── Helpers ─────────────────────────────────────────────────
 
-void _sendFail(SendPort port, ConversionWorkerRequest req,
-    SliceFileInfo info, Duration elapsed, String error) {
+void _sendFail(
+  SendPort port,
+  ConversionWorkerRequest req,
+  SliceFileInfo info,
+  Duration elapsed,
+  String error,
+) {
   port.send(WorkerLog('ERROR: $error'));
-  port.send(WorkerDone(ConversionResult(
-    success: false,
-    errorMessage: error,
-    outputPath: '',
-    sourceInfo: info,
-    targetProfile: req.targetProfile ?? PrinterProfile.athena2_16K,
-    layerCount: 0,
-    outputFileSizeBytes: 0,
-    duration: elapsed,
-  )));
+  port.send(
+    WorkerDone(
+      ConversionResult(
+        success: false,
+        errorMessage: error,
+        outputPath: '',
+        sourceInfo: info,
+        targetProfile: req.targetProfile ?? PrinterProfile.athena2_16K,
+        layerCount: 0,
+        outputFileSizeBytes: 0,
+        duration: elapsed,
+      ),
+    ),
+  );
 }
 
 String _fileName(String path) {
@@ -1309,11 +1471,7 @@ bool _settingBool(
   return _envIsTruthy(envKey);
 }
 
-int? _settingInt(
-  Map<String, dynamic> settings,
-  String key, {
-  String? envKey,
-}) {
+int? _settingInt(Map<String, dynamic> settings, String key, {String? envKey}) {
   final v = settings[key];
   if (v is int && v > 0) return v;
   if (envKey == null) return null;
@@ -1396,7 +1554,9 @@ int _nativeWorkerTarget({
   final directOverride = _settingInt(
     settings ?? const {},
     gpuActive ? 'gpuHostWorkers' : 'cpuHostWorkers',
-    envKey: gpuActive ? 'VOXELSHIFT_GPU_HOST_WORKERS' : 'VOXELSHIFT_CPU_HOST_WORKERS',
+    envKey: gpuActive
+        ? 'VOXELSHIFT_GPU_HOST_WORKERS'
+        : 'VOXELSHIFT_CPU_HOST_WORKERS',
   );
   if (directOverride != null) {
     return directOverride.clamp(1, math.max(1, layerCount));
@@ -1404,8 +1564,11 @@ int _nativeWorkerTarget({
 
   final cores = math.max(1, Platform.numberOfProcessors);
   final defaultMultiplier = gpuActive ? 1.0 : 2.0;
-  final multiplier = _positiveEnvDouble(
-        gpuActive ? 'VOXELSHIFT_GPU_WORKER_MULTIPLIER' : 'VOXELSHIFT_CPU_WORKER_MULTIPLIER',
+  final multiplier =
+      _positiveEnvDouble(
+        gpuActive
+            ? 'VOXELSHIFT_GPU_WORKER_MULTIPLIER'
+            : 'VOXELSHIFT_CPU_WORKER_MULTIPLIER',
       ) ??
       defaultMultiplier;
 
@@ -1428,10 +1591,7 @@ String _processingEngineLabel(bool gpuActive, int backendCode) {
   }
 }
 
-bool _shouldRecompressLayers(
-  List<Uint8List> pngs,
-  void Function(String) log,
-) {
+bool _shouldRecompressLayers(List<Uint8List> pngs, void Function(String) log) {
   if (pngs.isEmpty) return false;
 
   // Tiny files are usually the 1x1 blank PNG fast-path; no need to recompress.
@@ -1462,11 +1622,15 @@ bool _shouldRecompressLayers(
   final savingsRatio =
       (sampleOriginalTotal - sampleRecompressedTotal) / sampleOriginalTotal;
   final projectedSavingsMb =
-      (pngs.length * (sampleOriginalTotal - sampleRecompressedTotal) / candidateCount) /
-          (1024 * 1024);
+      (pngs.length *
+          (sampleOriginalTotal - sampleRecompressedTotal) /
+          candidateCount) /
+      (1024 * 1024);
 
-  log('Recompression sample: ${(savingsRatio * 100).toStringAsFixed(1)}% '
-      'estimated savings (~${projectedSavingsMb.toStringAsFixed(1)} MB).');
+  log(
+    'Recompression sample: ${(savingsRatio * 100).toStringAsFixed(1)}% '
+    'estimated savings (~${projectedSavingsMb.toStringAsFixed(1)} MB).',
+  );
 
   // Run expensive pass only if savings are meaningful.
   // For very large jobs, require stronger benefit to protect throughput.
