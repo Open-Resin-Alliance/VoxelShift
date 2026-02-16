@@ -40,14 +40,21 @@ class _ConversionScreenState extends State<ConversionScreen> {
 
   // Conversion
   bool _isConverting = false;
+  bool? _uploadAfterConversion; // Track which action was clicked
   bool _isUploading = false;
   ConversionProgress? _progress;
   ConversionResult? _result;
   String? _errorMessage;
 
-  // Auto-upload/print options for large files
+  // Upload cancellation
+  bool _cancelUpload = false;
+
+  // File details expansion
+  bool _showFileDetailsExposure = false;
+
+  // Material profile selection for upload
   List<ResinProfile> _resinProfiles = [];
-  ResinProfile? _autoResinProfile;
+  ResinProfile? _materialProfile;
   bool _autoStartPrint = false;
   bool _isResinLoading = false;
 
@@ -191,8 +198,8 @@ class _ConversionScreenState extends State<ConversionScreen> {
       if (!mounted) return;
       setState(() {
         _resinProfiles = selectable;
-        if (_autoResinProfile == null && selectable.isNotEmpty) {
-          _autoResinProfile = selectable.first;
+        if (_materialProfile == null && selectable.isNotEmpty) {
+          _materialProfile = selectable.first;
         }
       });
     } finally {
@@ -201,10 +208,10 @@ class _ConversionScreenState extends State<ConversionScreen> {
     }
   }
 
-  bool get _isLargePrint => (_fileInfo?.layerCount ?? 0) > 300;
-
-  bool get _shouldAutoUpload =>
-      _isLargePrint && _autoResinProfile != null && widget.activeDevice != null;
+  bool get _canUpload =>
+      widget.activeDevice != null &&
+      _selectedProfile != null &&
+      _materialProfile != null;
 
   /// Get the active device's board type from its label or resolution.
   /// Returns null if device is not available or board type cannot be determined.
@@ -868,7 +875,6 @@ class _ConversionScreenState extends State<ConversionScreen> {
       final devices = await _cache.load();
 
       if (!mounted) return;
-      Navigator.pop(context); // Close loading dialog
 
       // Check for corrupt layers
       final corruptLayers = await _converter.checkForCorruptLayers(path);
@@ -914,8 +920,11 @@ class _ConversionScreenState extends State<ConversionScreen> {
       // Check for resolution mismatch with active device
       if (widget.activeDevice != null) {
         _checkResolutionMismatch(info, widget.activeDevice!);
-        _loadResinProfiles();
+        await _loadResinProfiles();
       }
+
+      if (!mounted) return;
+      Navigator.pop(context); // Close loading dialog
     } catch (e) {
       if (!mounted) return;
       Navigator.pop(context); // Close loading dialog
@@ -929,11 +938,12 @@ class _ConversionScreenState extends State<ConversionScreen> {
 
   // ── Conversion ────────────────────────────────────────────
 
-  Future<void> _startConversion() async {
+  Future<void> _startConversion({required bool uploadAfter}) async {
     if (_selectedFilePath == null || _selectedProfile == null) return;
 
     setState(() {
       _isConverting = true;
+      _uploadAfterConversion = uploadAfter;
       _progress = null;
       _result = null;
       _errorMessage = null;
@@ -961,160 +971,34 @@ class _ConversionScreenState extends State<ConversionScreen> {
         if (!result.success) _errorMessage = result.errorMessage;
       });
 
-      // Auto-prompt upload if conversion succeeded and active printer is available
-      if (result.success && widget.activeDevice != null && mounted) {
+      // If upload was requested and conversion succeeded
+      if (uploadAfter &&
+          result.success &&
+          widget.activeDevice != null &&
+          mounted) {
         // Small delay so the user sees the result first
         await Future.delayed(const Duration(milliseconds: 400));
         if (!mounted) return;
-        if (_shouldAutoUpload) {
-          await _uploadToActivePrinter(
-            overrideResin: _autoResinProfile,
-            startPrintAfter: _autoStartPrint,
-            showSuccessDialog: !_autoStartPrint,
-          );
-        } else {
-          _promptUploadAfterConversion(result);
-        }
+        await _uploadToActivePrinter(
+          overrideResin: _materialProfile,
+          startPrintAfter: _autoStartPrint,
+          showSuccessDialog: !_autoStartPrint,
+        );
+      }
+
+      if (mounted) {
+        setState(() => _uploadAfterConversion = null);
       }
     } catch (e) {
       setState(() {
         _errorMessage = 'Conversion failed: $e';
         _isConverting = false;
+        _uploadAfterConversion = null;
       });
     }
   }
 
   // ── Post-conversion upload prompt ─────────────────────────
-
-  void _promptUploadAfterConversion(ConversionResult result) {
-    final device = widget.activeDevice!;
-    final fileName = result.outputPath.split(Platform.pathSeparator).last;
-    final sizeMb = result.outputFileSizeBytes / 1024 / 1024;
-
-    showDialog(
-      context: context,
-      builder: (ctx) => _buildCardDialog(
-        width: 500,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: Colors.cyan.shade300.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: Colors.cyan.shade300.withValues(alpha: 0.35),
-                    ),
-                  ),
-                  child: Icon(
-                    Icons.cloud_upload_outlined,
-                    color: Colors.cyan.shade300,
-                    size: 20,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                const Expanded(
-                  child: Text(
-                    'Upload to Printer?',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Text(
-              'Conversion completed successfully. Would you like to upload the result to your active printer?',
-              style: const TextStyle(fontSize: 14),
-            ),
-            const SizedBox(height: 14),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.04),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _promptRow(Icons.print, 'Printer', device.displayName),
-                  const SizedBox(height: 6),
-                  _promptRow(
-                    Icons.insert_drive_file_outlined,
-                    'File',
-                    fileName,
-                  ),
-                  const SizedBox(height: 6),
-                  _promptRow(
-                    Icons.data_usage,
-                    'Size',
-                    '${sizeMb.toStringAsFixed(1)} MB',
-                  ),
-                  const SizedBox(height: 6),
-                  _promptRow(
-                    Icons.memory,
-                    'Profile',
-                    result.targetProfile.name,
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                OutlinedButton(
-                  onPressed: () => Navigator.pop(ctx),
-                  child: const Text('Not Now'),
-                ),
-                const SizedBox(width: 10),
-                ElevatedButton.icon(
-                  onPressed: () {
-                    Navigator.pop(ctx);
-                    _uploadToActivePrinter();
-                  },
-                  icon: const Icon(Icons.upload, size: 18),
-                  label: Text('Upload to ${device.displayName}'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.cyan.shade700,
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _promptRow(IconData icon, String label, String value) {
-    return Row(
-      children: [
-        Icon(icon, size: 16, color: Colors.white.withValues(alpha: 0.5)),
-        const SizedBox(width: 8),
-        Text(
-          '$label: ',
-          style: TextStyle(
-            fontSize: 12,
-            color: Colors.white.withValues(alpha: 0.5),
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-        Expanded(
-          child: Text(
-            value,
-            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-            overflow: TextOverflow.ellipsis,
-          ),
-        ),
-      ],
-    );
-  }
 
   // ── Upload to active printer ──────────────────────────────
 
@@ -1231,6 +1115,9 @@ class _ConversionScreenState extends State<ConversionScreen> {
             .replaceAll(RegExp(r'\.[^.]*$'), '');
       }
 
+      // Reset cancel flag at start
+      _cancelUpload = false;
+
       // Show progress dialog with detailed tracking
       final progress = ValueNotifier<double>(0.0);
       final stage = ValueNotifier<String>('Preparing upload');
@@ -1247,6 +1134,18 @@ class _ConversionScreenState extends State<ConversionScreen> {
         profileId: selectedResin.profileId,
         onProgress: (p) => progress.value = p * 0.6, // 0% – 60%
       );
+
+      // Check if upload was cancelled
+      if (_cancelUpload) {
+        _closeUploadDialog();
+        if (mounted) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('Upload cancelled')));
+        }
+        setState(() => _isUploading = false);
+        return;
+      }
 
       if (!result.success) {
         stage.value = 'Upload failed';
@@ -1272,6 +1171,18 @@ class _ConversionScreenState extends State<ConversionScreen> {
         jobName: jobName,
         onProgress: (p) => progress.value = 0.6 + (p * 0.4),
       );
+
+      // Check if upload was cancelled
+      if (_cancelUpload) {
+        _closeUploadDialog();
+        if (mounted) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('Upload cancelled')));
+        }
+        setState(() => _isUploading = false);
+        return;
+      }
 
       // Resolve plateId
       int? plateId = result.plateId;
@@ -1587,11 +1498,140 @@ class _ConversionScreenState extends State<ConversionScreen> {
                   color: Colors.white.withValues(alpha: 0.45),
                 ),
               ),
+              const SizedBox(height: 16),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  OutlinedButton(
+                    onPressed: _showCancelUploadConfirmation,
+                    child: const Text(
+                      'Cancel',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ],
           ),
         ),
       ),
     );
+  }
+
+  Future<void> _showCancelUploadConfirmation() async {
+    if (!mounted) return;
+    final primary = Theme.of(context).colorScheme.primary;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.all(24),
+        child: Container(
+          width: 420,
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: const Color(0xFF1E293B),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.35),
+                blurRadius: 24,
+                offset: const Offset(0, 12),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: Colors.orange.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: Colors.orange.withValues(alpha: 0.4),
+                      ),
+                    ),
+                    child: const Icon(
+                      Icons.warning_outlined,
+                      color: Colors.orange,
+                      size: 20,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  const Expanded(
+                    child: Text(
+                      'Cancel Upload?',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'Are you sure you want to cancel the upload? '
+                'Any partially uploaded data will be lost.',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: Colors.white.withValues(alpha: 0.7),
+                  height: 1.5,
+                ),
+              ),
+              const SizedBox(height: 24),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  TextButton(
+                    onPressed: () => Navigator.of(ctx).pop(false),
+                    style: TextButton.styleFrom(
+                      foregroundColor: primary,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 10,
+                      ),
+                    ),
+                    child: const Text(
+                      'Continue Upload',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  OutlinedButton(
+                    onPressed: () => Navigator.of(ctx).pop(true),
+                    child: const Text(
+                      'Cancel',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    if (confirmed == true) {
+      _cancelUpload = true;
+      _closeUploadDialog();
+    }
   }
 
   String _getFileSizeMb(int bytes) {
@@ -1628,7 +1668,7 @@ class _ConversionScreenState extends State<ConversionScreen> {
   void _closeUploadDialog() {
     if (!mounted) return;
     try {
-      Navigator.of(context, rootNavigator: true).pop();
+      Navigator.of(context).pop();
     } catch (_) {}
   }
 
@@ -1799,12 +1839,14 @@ class _ConversionScreenState extends State<ConversionScreen> {
           children: [
             if (_fileInfo != null) ...[
               _buildProfileSelector(),
-              if (_isLargePrint) ...[
-                const SizedBox(height: 12),
-                _buildAutoUploadCard(),
-              ],
               const SizedBox(height: 16),
-              _buildConvertButton(),
+              _buildMaterialProfilePicker(),
+              const SizedBox(height: 16),
+              _buildActionButtons(),
+              if (_canUpload) ...[
+                const SizedBox(height: 12),
+                _buildStartPrintCheckbox(),
+              ],
             ],
             if (_progress != null && _isConverting) ...[
               const SizedBox(height: 16),
@@ -1925,237 +1967,248 @@ class _ConversionScreenState extends State<ConversionScreen> {
     final printHeight = info.layerCount * info.layerHeight;
 
     return Card(
-      clipBehavior: Clip.antiAlias,
-      child: Column(
-        children: [
-          // ── Gradient header bar ──
-          Container(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [primary.withValues(alpha: 0.18), Colors.transparent],
-                begin: Alignment.centerLeft,
-                end: Alignment.centerRight,
-              ),
-            ),
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-            child: Row(
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
               children: [
                 Icon(Icons.description_outlined, color: primary, size: 20),
                 const SizedBox(width: 10),
-                Text(
-                  'File Details',
-                  style: Theme.of(context).textTheme.titleMedium!.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const Spacer(),
-                // Glowing resolution badge
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 5,
-                  ),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [primary, primary.withValues(alpha: 0.7)],
-                    ),
-                    borderRadius: BorderRadius.circular(20),
-                    boxShadow: [
-                      BoxShadow(
-                        color: primary.withValues(alpha: 0.35),
-                        blurRadius: 10,
-                        offset: const Offset(0, 2),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'File Details',
+                        style: Theme.of(context).textTheme.titleMedium!
+                            .copyWith(fontWeight: FontWeight.w600),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        'Data extracted from ${info.sourcePath.split(Platform.pathSeparator).last}',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.white.withValues(alpha: 0.5),
+                        ),
                       ),
                     ],
                   ),
+                ),
+                const SizedBox(width: 12),
+                // Resolution badge - top right
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: primary.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: primary.withValues(alpha: 0.3)),
+                  ),
                   child: Text(
                     info.detectedResolutionLabel,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 13,
+                    style: TextStyle(
+                      color: primary,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 12,
                     ),
                   ),
                 ),
               ],
             ),
-          ),
-
-          // ── Body: thumbnail + stats (stacked) ──
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                if (info.thumbnailPng != null) ...[
-                  GestureDetector(
-                    onTap: () {
-                      showDialog(
-                        context: context,
-                        builder: (context) => Dialog(
-                          backgroundColor: const Color(0xFF0D1117),
-                          insetPadding: const EdgeInsets.all(16),
-                          child: Stack(
-                            children: [
-                              Padding(
-                                padding: const EdgeInsets.all(16),
-                                child: Image.memory(
-                                  info.thumbnailPng!,
-                                  fit: BoxFit.contain,
-                                ),
+            const SizedBox(height: 16),
+            if (info.thumbnailPng != null) ...[
+              GestureDetector(
+                onTap: () {
+                  showDialog(
+                    context: context,
+                    builder: (context) => Dialog(
+                      backgroundColor: const Color(0xFF0D1117),
+                      insetPadding: const EdgeInsets.all(16),
+                      child: Stack(
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Image.memory(
+                              info.thumbnailPng!,
+                              fit: BoxFit.contain,
+                            ),
+                          ),
+                          Positioned(
+                            top: 8,
+                            right: 8,
+                            child: IconButton(
+                              icon: const Icon(
+                                Icons.close,
+                                color: Colors.white,
                               ),
-                              Positioned(
-                                top: 8,
-                                right: 8,
-                                child: IconButton(
-                                  icon: const Icon(
-                                    Icons.close,
-                                    color: Colors.white,
-                                  ),
-                                  onPressed: () => Navigator.pop(context),
-                                ),
-                              ),
-                            ],
+                              onPressed: () => Navigator.pop(context),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+                child: Container(
+                  width: double.infinity,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF0D1117),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.08),
+                    ),
+                  ),
+                  padding: const EdgeInsets.all(10),
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      final maxHeight = math.min(
+                        300.0,
+                        constraints.maxWidth * 0.6,
+                      );
+                      final height = maxHeight.clamp(180.0, 300.0);
+                      return SizedBox(
+                        height: height,
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: Image.memory(
+                            info.thumbnailPng!,
+                            fit: BoxFit.contain,
                           ),
                         ),
                       );
                     },
-                    child: Container(
-                      width: double.infinity,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF0D1117),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.08),
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: primary.withValues(alpha: 0.12),
-                            blurRadius: 24,
-                            spreadRadius: 2,
-                          ),
-                        ],
-                      ),
-                      padding: const EdgeInsets.all(10),
-                      child: LayoutBuilder(
-                        builder: (context, constraints) {
-                          final maxHeight = math.min(
-                            300.0,
-                            constraints.maxWidth * 0.6,
-                          );
-                          final height = maxHeight.clamp(180.0, 300.0);
-                          return SizedBox(
-                            height: height,
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(8),
-                              child: Image.memory(
-                                info.thumbnailPng!,
-                                fit: BoxFit.contain,
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-                    ),
                   ),
-                  const SizedBox(height: 16),
-                ],
-
-                _sectionLabel('GEOMETRY'),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _statTile(
-                        Icons.aspect_ratio_rounded,
-                        'Resolution',
-                        '${info.resolutionX} × ${info.resolutionY}',
-                        Colors.cyanAccent,
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: _statTile(
-                        Icons.layers_rounded,
-                        'Layers',
-                        '${info.layerCount}',
-                        Colors.tealAccent,
-                      ),
-                    ),
-                  ],
                 ),
-                const SizedBox(height: 10),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _statTile(
-                        Icons.height_rounded,
-                        'Layer Height',
-                        '${_fmt3(info.layerHeight)} mm',
-                        Colors.amberAccent,
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: _statTile(
-                        Icons.straighten_rounded,
-                        'Print Height',
-                        '${_fmt3(printHeight)} mm',
-                        Colors.orangeAccent,
-                      ),
-                    ),
-                  ],
+              ),
+              const SizedBox(height: 16),
+            ],
+            _sectionLabel('GEOMETRY'),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: _statTile(
+                    Icons.aspect_ratio_rounded,
+                    'Resolution',
+                    '${info.resolutionX} × ${info.resolutionY}',
+                    Colors.cyanAccent,
+                  ),
                 ),
-                const SizedBox(height: 18),
-                _sectionLabel('EXPOSURE'),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _statTile(
-                        Icons.timer_outlined,
-                        'Normal',
-                        '${_fmt3(info.exposureTime)} s',
-                        Colors.lightBlueAccent,
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: _statTile(
-                        Icons.timer,
-                        'Bottom',
-                        '${_fmt3(info.bottomExposureTime)} s',
-                        Colors.purpleAccent,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _statTile(
-                        Icons.filter_none_rounded,
-                        'Bottom Layers',
-                        '${info.bottomLayerCount}',
-                        Colors.pinkAccent,
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: _statTile(
-                        Icons.swap_vert_rounded,
-                        'Lift Height',
-                        '${_fmt3(info.liftHeight)} mm',
-                        Colors.greenAccent,
-                      ),
-                    ),
-                  ],
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _statTile(
+                    Icons.layers_rounded,
+                    'Layers',
+                    '${info.layerCount}',
+                    Colors.tealAccent,
+                  ),
                 ),
               ],
             ),
-          ),
-        ],
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: _statTile(
+                    Icons.height_rounded,
+                    'Layer Height',
+                    '${_fmt3(info.layerHeight)} mm',
+                    Colors.amberAccent,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _statTile(
+                    Icons.straighten_rounded,
+                    'Print Height',
+                    '${_fmt3(printHeight)} mm',
+                    Colors.orangeAccent,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            GestureDetector(
+              onTap: () {
+                setState(
+                  () => _showFileDetailsExposure = !_showFileDetailsExposure,
+                );
+              },
+              child: Row(
+                children: [
+                  Text(
+                    _showFileDetailsExposure ? 'Hide details' : 'Show more',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Theme.of(context).colorScheme.primary,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Icon(
+                    _showFileDetailsExposure
+                        ? Icons.expand_less
+                        : Icons.expand_more,
+                    size: 18,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+                ],
+              ),
+            ),
+            if (_showFileDetailsExposure) ...[
+              const SizedBox(height: 16),
+              _sectionLabel('EXPOSURE'),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: _statTile(
+                      Icons.timer_outlined,
+                      'Normal',
+                      '${_fmt3(info.exposureTime)} s',
+                      Colors.lightBlueAccent,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: _statTile(
+                      Icons.timer,
+                      'Bottom',
+                      '${_fmt3(info.bottomExposureTime)} s',
+                      Colors.purpleAccent,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(
+                    child: _statTile(
+                      Icons.filter_none_rounded,
+                      'Bottom Layers',
+                      '${info.bottomLayerCount}',
+                      Colors.pinkAccent,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: _statTile(
+                      Icons.swap_vert_rounded,
+                      'Lift Height',
+                      '${_fmt3(info.liftHeight)} mm',
+                      Colors.greenAccent,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }
@@ -2398,7 +2451,7 @@ class _ConversionScreenState extends State<ConversionScreen> {
     );
   }
 
-  Widget _buildAutoUploadCard() {
+  Widget _buildMaterialProfilePicker() {
     final device = widget.activeDevice;
     return Card(
       child: Padding(
@@ -2409,39 +2462,40 @@ class _ConversionScreenState extends State<ConversionScreen> {
             Row(
               children: [
                 Icon(
-                  Icons.auto_awesome,
+                  Icons.water_drop,
                   color: Theme.of(context).colorScheme.primary,
                 ),
                 const SizedBox(width: 12),
-                const Text(
-                  'Auto Upload (Large Print)',
-                  style: TextStyle(fontWeight: FontWeight.w600),
-                ),
-                const Spacer(),
                 Text(
-                  '${_fileInfo?.layerCount ?? 0} layers',
-                  style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.5),
-                    fontSize: 12,
+                  'Material',
+                  style: Theme.of(context).textTheme.titleMedium!.copyWith(
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 10),
-            Text(
-              'Select a material to automatically upload after conversion. You can optionally start the print right away.',
-              style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.6),
-                fontSize: 12,
-              ),
-            ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 16),
             if (device == null)
-              Text(
-                'Connect a printer to enable auto-upload.',
-                style: TextStyle(
-                  color: Colors.orangeAccent.withValues(alpha: 0.9),
-                  fontSize: 12,
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.orange.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: Colors.orange.withValues(alpha: 0.3),
+                  ),
+                ),
+                child: const Row(
+                  children: [
+                    Icon(Icons.cloud_off, color: Colors.orange, size: 18),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Connect a printer to select material profiles.',
+                        style: TextStyle(color: Colors.orange, fontSize: 13),
+                      ),
+                    ),
+                  ],
                 ),
               )
             else if (_isResinLoading)
@@ -2454,72 +2508,82 @@ class _ConversionScreenState extends State<ConversionScreen> {
                   ),
                   const SizedBox(width: 10),
                   Text(
-                    'Loading material profiles…',
+                    'Loading materials…',
                     style: TextStyle(
                       color: Colors.white.withValues(alpha: 0.6),
-                      fontSize: 12,
+                      fontSize: 13,
                     ),
                   ),
                 ],
               )
+            else if (_resinProfiles.isEmpty)
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.red.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.red.withValues(alpha: 0.3)),
+                ),
+                child: const Row(
+                  children: [
+                    Icon(
+                      Icons.error_outline,
+                      color: Colors.redAccent,
+                      size: 18,
+                    ),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'No materials available on printer.',
+                        style: TextStyle(color: Colors.redAccent, fontSize: 13),
+                      ),
+                    ),
+                  ],
+                ),
+              )
             else
-              DropdownButtonFormField<ResinProfile>(
-                initialValue: _autoResinProfile,
-                decoration: InputDecoration(
-                  labelText: 'Material profile',
-                  labelStyle: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.6),
-                  ),
-                  filled: true,
-                  fillColor: const Color(0xFF16213E),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(
-                      color: Colors.white.withValues(alpha: 0.12),
+              SizedBox(
+                width: double.infinity,
+                child: DropdownButtonFormField<ResinProfile>(
+                  initialValue: _materialProfile,
+                  decoration: InputDecoration(
+                    filled: true,
+                    fillColor: const Color(0xFF16213E),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(
+                        color: Colors.white.withValues(alpha: 0.12),
+                      ),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(
+                        color: Colors.white.withValues(alpha: 0.12),
+                      ),
+                    ),
+                    disabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(
+                        color: Colors.white.withValues(alpha: 0.12),
+                      ),
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 14,
                     ),
                   ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(
-                      color: Colors.white.withValues(alpha: 0.12),
-                    ),
-                  ),
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 14,
-                  ),
-                ),
-                dropdownColor: const Color(0xFF1E293B),
-                isExpanded: true,
-                items: _resinProfiles
-                    .map((p) => DropdownMenuItem(value: p, child: Text(p.name)))
-                    .toList(),
-                onChanged: _resinProfiles.isEmpty
-                    ? null
-                    : (p) => setState(() => _autoResinProfile = p),
-              ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Checkbox(
-                  value: _autoStartPrint,
-                  onChanged: device == null
+                  dropdownColor: const Color(0xFF1E293B),
+                  isExpanded: true,
+                  items: _resinProfiles
+                      .map(
+                        (p) => DropdownMenuItem(value: p, child: Text(p.name)),
+                      )
+                      .toList(),
+                  onChanged: _resinProfiles.isEmpty
                       ? null
-                      : (val) => setState(() => _autoStartPrint = val ?? false),
-                  activeColor: Theme.of(context).colorScheme.primary,
+                      : (p) => setState(() => _materialProfile = p),
                 ),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Text(
-                    'Start print after upload',
-                    style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.8),
-                      fontSize: 13,
-                    ),
-                  ),
-                ),
-              ],
-            ),
+              ),
           ],
         ),
       ),
@@ -2683,25 +2747,93 @@ class _ConversionScreenState extends State<ConversionScreen> {
     );
   }
 
-  Widget _buildConvertButton() {
-    return SizedBox(
-      width: double.infinity,
-      height: 48,
-      child: ElevatedButton.icon(
-        onPressed: (_isConverting || _selectedProfile == null)
-            ? null
-            : _startConversion,
-        icon: _isConverting
-            ? const SizedBox(
-                width: 18,
-                height: 18,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: Colors.white,
-                ),
-              )
-            : const Icon(Icons.play_arrow),
-        label: Text(_isConverting ? 'Converting…' : 'Convert to NanoDLP'),
+  Widget _buildActionButtons() {
+    final canConvert = !_isConverting && _selectedProfile != null;
+    final isConvertingWithoutUpload =
+        _isConverting && _uploadAfterConversion == false;
+    final isConvertingWithUpload =
+        _isConverting && _uploadAfterConversion == true;
+
+    return Row(
+      spacing: 12,
+      children: [
+        Expanded(
+          child: SizedBox(
+            height: 48,
+            child: ElevatedButton.icon(
+              onPressed: canConvert
+                  ? () => _startConversion(uploadAfter: false)
+                  : null,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.white.withValues(alpha: 0.08),
+                foregroundColor: Colors.white.withValues(alpha: 0.8),
+              ),
+              icon: isConvertingWithoutUpload
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Icon(Icons.download),
+              label: const Text('Just Convert'),
+            ),
+          ),
+        ),
+        Expanded(
+          child: SizedBox(
+            height: 48,
+            child: ElevatedButton.icon(
+              onPressed: (canConvert && _canUpload)
+                  ? () => _startConversion(uploadAfter: true)
+                  : null,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.cyan.shade700,
+                foregroundColor: Colors.white,
+              ),
+              icon: isConvertingWithUpload
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Icon(Icons.cloud_upload),
+              label: const Text('Convert & Upload'),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildStartPrintCheckbox() {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        child: Row(
+          children: [
+            Checkbox(
+              value: _autoStartPrint,
+              onChanged: (value) {
+                setState(() {
+                  _autoStartPrint = value ?? false;
+                });
+              },
+            ),
+            const SizedBox(width: 8),
+            const Expanded(
+              child: Text(
+                'Start print after upload',
+                style: TextStyle(fontSize: 14),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
