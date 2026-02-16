@@ -168,7 +168,47 @@ class _PostProcessorScreenState extends State<PostProcessorScreen> {
     final client = NanoDlpClient(device);
     try {
       final profiles = await client.listResinProfiles();
-      final selectable = profiles.where((p) => !p.locked).toList();
+      var selectable = profiles.where((p) => !p.locked).toList();
+
+      // Filter by layer height if we have file info
+      final ctbLayerHeightUm = (_fileInfo != null)
+          ? (_fileInfo!.layerHeight * 1000).round()
+          : null;
+      if (ctbLayerHeightUm != null) {
+        final matchingProfiles = selectable.where((p) {
+          // Try 1: Check Depth field (layer height in microns)
+          final depth = p.raw['Depth'] ?? p.raw['depth'];
+          if (depth != null) {
+            final profileDepthUm = (depth is int)
+                ? depth
+                : int.tryParse('$depth');
+            if (profileDepthUm != null && profileDepthUm == ctbLayerHeightUm) {
+              return true;
+            }
+          }
+
+          // Try 2: Parse layer height from profile name (e.g., "50μm" or "30µm")
+          final nameMatch = RegExp(
+            r'(\d+)\s*[uµ]m',
+            caseSensitive: false,
+          ).firstMatch(p.name);
+          if (nameMatch != null) {
+            final nameLayerHeight = int.tryParse(nameMatch.group(1)!);
+            if (nameLayerHeight != null &&
+                nameLayerHeight == ctbLayerHeightUm) {
+              return true;
+            }
+          }
+
+          return false;
+        }).toList();
+
+        // Only use filtered list if we found matches
+        if (matchingProfiles.isNotEmpty) {
+          selectable = matchingProfiles;
+        }
+      }
+
       if (!mounted) return;
       setState(() {
         _resinProfiles = selectable;
@@ -1221,7 +1261,47 @@ class _PostProcessorScreenState extends State<PostProcessorScreen> {
     try {
       // Get available profiles
       final profiles = await client.listResinProfiles();
-      final selectable = profiles.where((p) => !p.locked).toList();
+      var selectable = profiles.where((p) => !p.locked).toList();
+
+      // Filter by layer height if we have file info
+      final ctbLayerHeightUm = (_fileInfo != null)
+          ? (_fileInfo!.layerHeight * 1000).round()
+          : null;
+      if (ctbLayerHeightUm != null) {
+        final matchingProfiles = selectable.where((p) {
+          // Try 1: Check Depth field (layer height in microns)
+          final depth = p.raw['Depth'] ?? p.raw['depth'];
+          if (depth != null) {
+            final profileDepthUm = (depth is int)
+                ? depth
+                : int.tryParse('$depth');
+            if (profileDepthUm != null && profileDepthUm == ctbLayerHeightUm) {
+              return true;
+            }
+          }
+
+          // Try 2: Parse layer height from profile name (e.g., "50μm" or "30µm")
+          final nameMatch = RegExp(
+            r'(\d+)\s*[uµ]m',
+            caseSensitive: false,
+          ).firstMatch(p.name);
+          if (nameMatch != null) {
+            final nameLayerHeight = int.tryParse(nameMatch.group(1)!);
+            if (nameLayerHeight != null &&
+                nameLayerHeight == ctbLayerHeightUm) {
+              return true;
+            }
+          }
+
+          return false;
+        }).toList();
+
+        // Only use filtered list if we found matches
+        if (matchingProfiles.isNotEmpty) {
+          selectable = matchingProfiles;
+        }
+      }
+
       if (selectable.isEmpty) {
         setState(() {
           _errorMessage = 'No material profiles on device';
