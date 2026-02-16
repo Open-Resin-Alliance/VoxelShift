@@ -32,51 +32,53 @@ final class _NativeAreaStatsResult extends ffi.Struct {
   external int areaCount;
 }
 
-typedef _NativeProcessLayersBatch = ffi.Int32 Function(
-  ffi.Pointer<ffi.Uint8> inputBlob,
-  ffi.Int32 inputBlobLen,
-  ffi.Pointer<ffi.Int32> inputOffsets,
-  ffi.Pointer<ffi.Int32> inputLengths,
-  ffi.Int32 count,
-  ffi.Int32 layerIndexBase,
-  ffi.Int32 encryptionKey,
-  ffi.Int32 srcWidth,
-  ffi.Int32 height,
-  ffi.Int32 outWidth,
-  ffi.Int32 channels,
-  ffi.Double xPixelSizeMm,
-  ffi.Double yPixelSizeMm,
-  ffi.Int32 pngLevel,
-  ffi.Int32 threadCount,
-  ffi.Pointer<ffi.Pointer<ffi.Uint8>> outBlob,
-  ffi.Pointer<ffi.Int32> outBlobLen,
-  ffi.Pointer<ffi.Pointer<ffi.Int32>> outOffsets,
-  ffi.Pointer<ffi.Pointer<ffi.Int32>> outLengths,
-  ffi.Pointer<ffi.Pointer<_NativeAreaStatsResult>> outAreas,
-);
+typedef _NativeProcessLayersBatch =
+    ffi.Int32 Function(
+      ffi.Pointer<ffi.Uint8> inputBlob,
+      ffi.Int32 inputBlobLen,
+      ffi.Pointer<ffi.Int32> inputOffsets,
+      ffi.Pointer<ffi.Int32> inputLengths,
+      ffi.Int32 count,
+      ffi.Int32 layerIndexBase,
+      ffi.Int32 encryptionKey,
+      ffi.Int32 srcWidth,
+      ffi.Int32 height,
+      ffi.Int32 outWidth,
+      ffi.Int32 channels,
+      ffi.Double xPixelSizeMm,
+      ffi.Double yPixelSizeMm,
+      ffi.Int32 pngLevel,
+      ffi.Int32 threadCount,
+      ffi.Pointer<ffi.Pointer<ffi.Uint8>> outBlob,
+      ffi.Pointer<ffi.Int32> outBlobLen,
+      ffi.Pointer<ffi.Pointer<ffi.Int32>> outOffsets,
+      ffi.Pointer<ffi.Pointer<ffi.Int32>> outLengths,
+      ffi.Pointer<ffi.Pointer<_NativeAreaStatsResult>> outAreas,
+    );
 
-typedef _DartProcessLayersBatch = int Function(
-  ffi.Pointer<ffi.Uint8> inputBlob,
-  int inputBlobLen,
-  ffi.Pointer<ffi.Int32> inputOffsets,
-  ffi.Pointer<ffi.Int32> inputLengths,
-  int count,
-  int layerIndexBase,
-  int encryptionKey,
-  int srcWidth,
-  int height,
-  int outWidth,
-  int channels,
-  double xPixelSizeMm,
-  double yPixelSizeMm,
-  int pngLevel,
-  int threadCount,
-  ffi.Pointer<ffi.Pointer<ffi.Uint8>> outBlob,
-  ffi.Pointer<ffi.Int32> outBlobLen,
-  ffi.Pointer<ffi.Pointer<ffi.Int32>> outOffsets,
-  ffi.Pointer<ffi.Pointer<ffi.Int32>> outLengths,
-  ffi.Pointer<ffi.Pointer<_NativeAreaStatsResult>> outAreas,
-);
+typedef _DartProcessLayersBatch =
+    int Function(
+      ffi.Pointer<ffi.Uint8> inputBlob,
+      int inputBlobLen,
+      ffi.Pointer<ffi.Int32> inputOffsets,
+      ffi.Pointer<ffi.Int32> inputLengths,
+      int count,
+      int layerIndexBase,
+      int encryptionKey,
+      int srcWidth,
+      int height,
+      int outWidth,
+      int channels,
+      double xPixelSizeMm,
+      double yPixelSizeMm,
+      int pngLevel,
+      int threadCount,
+      ffi.Pointer<ffi.Pointer<ffi.Uint8>> outBlob,
+      ffi.Pointer<ffi.Int32> outBlobLen,
+      ffi.Pointer<ffi.Pointer<ffi.Int32>> outOffsets,
+      ffi.Pointer<ffi.Pointer<ffi.Int32>> outLengths,
+      ffi.Pointer<ffi.Pointer<_NativeAreaStatsResult>> outAreas,
+    );
 
 typedef _NativeSetProcessBatchThreads = ffi.Void Function(ffi.Int32 threads);
 typedef _DartSetProcessBatchThreads = void Function(int threads);
@@ -102,77 +104,81 @@ typedef _DartGetProcessLastCudaError = int Function();
 typedef _NativeGetProcessLastThreadCount = ffi.Int32 Function();
 typedef _DartGetProcessLastThreadCount = int Function();
 
-typedef _NativeGetProcessLastThreadStats = ffi.Void Function(
-  ffi.Pointer<ffi.Int64> outTotalNs,
-  ffi.Pointer<ffi.Int64> outDecodeNs,
-  ffi.Pointer<ffi.Int64> outScanlineNs,
-  ffi.Pointer<ffi.Int64> outCompressNs,
-  ffi.Pointer<ffi.Int64> outPngNs,
-  ffi.Pointer<ffi.Int32> outLayers,
-  ffi.Int32 maxCount,
-);
-typedef _DartGetProcessLastThreadStats = void Function(
-  ffi.Pointer<ffi.Int64> outTotalNs,
-  ffi.Pointer<ffi.Int64> outDecodeNs,
-  ffi.Pointer<ffi.Int64> outScanlineNs,
-  ffi.Pointer<ffi.Int64> outCompressNs,
-  ffi.Pointer<ffi.Int64> outPngNs,
-  ffi.Pointer<ffi.Int32> outLayers,
-  int maxCount,
-);
+typedef _NativeGetProcessLastThreadStats =
+    ffi.Void Function(
+      ffi.Pointer<ffi.Int64> outTotalNs,
+      ffi.Pointer<ffi.Int64> outDecodeNs,
+      ffi.Pointer<ffi.Int64> outScanlineNs,
+      ffi.Pointer<ffi.Int64> outCompressNs,
+      ffi.Pointer<ffi.Int64> outPngNs,
+      ffi.Pointer<ffi.Int32> outLayers,
+      ffi.Int32 maxCount,
+    );
+typedef _DartGetProcessLastThreadStats =
+    void Function(
+      ffi.Pointer<ffi.Int64> outTotalNs,
+      ffi.Pointer<ffi.Int64> outDecodeNs,
+      ffi.Pointer<ffi.Int64> outScanlineNs,
+      ffi.Pointer<ffi.Int64> outCompressNs,
+      ffi.Pointer<ffi.Int64> outPngNs,
+      ffi.Pointer<ffi.Int32> outLayers,
+      int maxCount,
+    );
 
 typedef _NativeGetProcessLastGpuBatchOk = ffi.Int32 Function();
 typedef _DartGetProcessLastGpuBatchOk = int Function();
 
 // ── Phased batch (CPU+GPU hybrid pipeline) ──────────────────────────────────
 
-typedef _NativeProcessLayersBatchPhased = ffi.Int32 Function(
-  ffi.Pointer<ffi.Uint8> inputBlob,
-  ffi.Int32 inputBlobLen,
-  ffi.Pointer<ffi.Int32> inputOffsets,
-  ffi.Pointer<ffi.Int32> inputLengths,
-  ffi.Int32 count,
-  ffi.Int32 layerIndexBase,
-  ffi.Int32 encryptionKey,
-  ffi.Int32 srcWidth,
-  ffi.Int32 height,
-  ffi.Int32 outWidth,
-  ffi.Int32 channels,
-  ffi.Double xPixelSizeMm,
-  ffi.Double yPixelSizeMm,
-  ffi.Int32 pngLevel,
-  ffi.Int32 threadCount,
-  ffi.Int32 useGpuBatch,
-  ffi.Pointer<ffi.Pointer<ffi.Uint8>> outBlob,
-  ffi.Pointer<ffi.Int32> outBlobLen,
-  ffi.Pointer<ffi.Pointer<ffi.Int32>> outOffsets,
-  ffi.Pointer<ffi.Pointer<ffi.Int32>> outLengths,
-  ffi.Pointer<ffi.Pointer<_NativeAreaStatsResult>> outAreas,
-);
+typedef _NativeProcessLayersBatchPhased =
+    ffi.Int32 Function(
+      ffi.Pointer<ffi.Uint8> inputBlob,
+      ffi.Int32 inputBlobLen,
+      ffi.Pointer<ffi.Int32> inputOffsets,
+      ffi.Pointer<ffi.Int32> inputLengths,
+      ffi.Int32 count,
+      ffi.Int32 layerIndexBase,
+      ffi.Int32 encryptionKey,
+      ffi.Int32 srcWidth,
+      ffi.Int32 height,
+      ffi.Int32 outWidth,
+      ffi.Int32 channels,
+      ffi.Double xPixelSizeMm,
+      ffi.Double yPixelSizeMm,
+      ffi.Int32 pngLevel,
+      ffi.Int32 threadCount,
+      ffi.Int32 useGpuBatch,
+      ffi.Pointer<ffi.Pointer<ffi.Uint8>> outBlob,
+      ffi.Pointer<ffi.Int32> outBlobLen,
+      ffi.Pointer<ffi.Pointer<ffi.Int32>> outOffsets,
+      ffi.Pointer<ffi.Pointer<ffi.Int32>> outLengths,
+      ffi.Pointer<ffi.Pointer<_NativeAreaStatsResult>> outAreas,
+    );
 
-typedef _DartProcessLayersBatchPhased = int Function(
-  ffi.Pointer<ffi.Uint8> inputBlob,
-  int inputBlobLen,
-  ffi.Pointer<ffi.Int32> inputOffsets,
-  ffi.Pointer<ffi.Int32> inputLengths,
-  int count,
-  int layerIndexBase,
-  int encryptionKey,
-  int srcWidth,
-  int height,
-  int outWidth,
-  int channels,
-  double xPixelSizeMm,
-  double yPixelSizeMm,
-  int pngLevel,
-  int threadCount,
-  int useGpuBatch,
-  ffi.Pointer<ffi.Pointer<ffi.Uint8>> outBlob,
-  ffi.Pointer<ffi.Int32> outBlobLen,
-  ffi.Pointer<ffi.Pointer<ffi.Int32>> outOffsets,
-  ffi.Pointer<ffi.Pointer<ffi.Int32>> outLengths,
-  ffi.Pointer<ffi.Pointer<_NativeAreaStatsResult>> outAreas,
-);
+typedef _DartProcessLayersBatchPhased =
+    int Function(
+      ffi.Pointer<ffi.Uint8> inputBlob,
+      int inputBlobLen,
+      ffi.Pointer<ffi.Int32> inputOffsets,
+      ffi.Pointer<ffi.Int32> inputLengths,
+      int count,
+      int layerIndexBase,
+      int encryptionKey,
+      int srcWidth,
+      int height,
+      int outWidth,
+      int channels,
+      double xPixelSizeMm,
+      double yPixelSizeMm,
+      int pngLevel,
+      int threadCount,
+      int useGpuBatch,
+      ffi.Pointer<ffi.Pointer<ffi.Uint8>> outBlob,
+      ffi.Pointer<ffi.Int32> outBlobLen,
+      ffi.Pointer<ffi.Pointer<ffi.Int32>> outOffsets,
+      ffi.Pointer<ffi.Pointer<ffi.Int32>> outLengths,
+      ffi.Pointer<ffi.Pointer<_NativeAreaStatsResult>> outAreas,
+    );
 
 // ── CUDA device info ────────────────────────────────────────────────────────
 
@@ -194,8 +200,10 @@ typedef _DartFreeBuffer = void Function(ffi.Pointer<ffi.Uint8> buffer);
 typedef _NativeFreeIntBuffer = ffi.Void Function(ffi.Pointer<ffi.Int32> buffer);
 typedef _DartFreeIntBuffer = void Function(ffi.Pointer<ffi.Int32> buffer);
 
-typedef _NativeFreeAreaBuffer = ffi.Void Function(ffi.Pointer<_NativeAreaStatsResult> buffer);
-typedef _DartFreeAreaBuffer = void Function(ffi.Pointer<_NativeAreaStatsResult> buffer);
+typedef _NativeFreeAreaBuffer =
+    ffi.Void Function(ffi.Pointer<_NativeAreaStatsResult> buffer);
+typedef _DartFreeAreaBuffer =
+    void Function(ffi.Pointer<_NativeAreaStatsResult> buffer);
 
 class NativeBatchLayerResult {
   final Uint8List pngBytes;
@@ -261,6 +269,25 @@ class NativeLayerBatchProcess {
         _freeBuffer != null &&
         _freeIntBuffer != null &&
         _freeAreaBuffer != null;
+  }
+
+  /// Returns diagnostic message if native batch processing is unavailable.
+  /// Returns null if everything is working.
+  String? getUnavailableDiagnostic() {
+    _ensureInit();
+    if (_lib == null) {
+      return 'Native layer processing library not found. Required: area_stats.dll (Windows), libarea_stats.so (Linux), or libarea_stats.dylib (macOS). '
+          'On Windows, also ensure Visual C++ runtime and zlib are installed.';
+    }
+    if (_processBatch == null) {
+      return 'process_layers_batch function not found in native library. Library may be corrupted or incompatible.';
+    }
+    if (_freeBuffer == null ||
+        _freeIntBuffer == null ||
+        _freeAreaBuffer == null) {
+      return 'Memory management functions not found in native library.';
+    }
+    return null;
   }
 
   void setBatchThreads(int threads) {
@@ -371,14 +398,16 @@ class NativeLayerBatchProcess {
 
       final stats = <NativeThreadStats>[];
       for (int i = 0; i < count; i++) {
-        stats.add(NativeThreadStats(
-          layers: layersPtr[i],
-          totalNs: totalPtr[i],
-          decodeNs: decodePtr[i],
-          scanlineNs: scanPtr[i],
-          compressNs: compressPtr[i],
-          pngNs: pngPtr[i],
-        ));
+        stats.add(
+          NativeThreadStats(
+            layers: layersPtr[i],
+            totalNs: totalPtr[i],
+            decodeNs: decodePtr[i],
+            scanlineNs: scanPtr[i],
+            compressNs: compressPtr[i],
+            pngNs: pngPtr[i],
+          ),
+        );
       }
       return stats;
     } catch (_) {
@@ -529,7 +558,13 @@ class NativeLayerBatchProcess {
     final freeBytes = _freeBuffer;
     final freeInts = _freeIntBuffer;
     final freeAreas = _freeAreaBuffer;
-    if (fn == null || freeBytes == null || freeInts == null || freeAreas == null) {
+    if (fn == null ||
+        freeBytes == null ||
+        freeInts == null ||
+        freeAreas == null) {
+      print(
+        '[NativeBatch] processBatch: Function or memory allocators not available',
+      );
       return null;
     }
     if (rawLayers.isEmpty) return const <NativeBatchLayerResult>[];
@@ -539,6 +574,13 @@ class NativeLayerBatchProcess {
     for (final l in rawLayers) {
       inputBlobLen += l.length;
     }
+
+    print(
+      '[NativeBatch] processBatch: layers=$count, blobLen=$inputBlobLen, size=${srcWidth}x${height}→${outWidth}x${channels}, threadCount=$threadCount, pngLevel=$pngLevel',
+    );
+    print(
+      '[NativeBatch] processBatch: pixels=${xPixelSizeMm}x${yPixelSizeMm}mm, key=$encryptionKey, base=$layerIndexBase',
+    );
 
     final inputBlobPtr = malloc<ffi.Uint8>(inputBlobLen);
     final inputOffsetsPtr = malloc<ffi.Int32>(count);
@@ -589,7 +631,23 @@ class NativeLayerBatchProcess {
         outLengthsPtr,
         outAreasPtr,
       );
-      if (ok == 0) return null;
+      if (ok == 0) {
+        // Log diagnostic info about why the call failed
+        print(
+          '[NativeBatch] process_layers_batch returned 0. Possible failures:',
+        );
+        print(
+          '  • Input validation: blob=$inputBlobLen bytes, offsets=${inputOffsetsPtr == ffi.nullptr ? "NULL" : "OK"}, lengths=${inputLengthsPtr == ffi.nullptr ? "NULL" : "OK"}',
+        );
+        print(
+          '  • Size validation: src=${srcWidth}x$height, out=${outWidth}x$height, channels=$channels',
+        );
+        print('  • Memory: allocated pointers for offsets/lengths/areas');
+        print(
+          '  • Most likely: zlib not available (missing DLL dependency) or early validation failure',
+        );
+        return null;
+      }
 
       final outBlob = outBlobPtr.value;
       final outBlobLen = outBlobLenPtr.value;
@@ -688,7 +746,10 @@ class NativeLayerBatchProcess {
     final freeBytes = _freeBuffer;
     final freeInts = _freeIntBuffer;
     final freeAreas = _freeAreaBuffer;
-    if (fn == null || freeBytes == null || freeInts == null || freeAreas == null) {
+    if (fn == null ||
+        freeBytes == null ||
+        freeInts == null ||
+        freeAreas == null) {
       return null;
     }
     if (rawLayers.isEmpty) return const <NativeBatchLayerResult>[];
@@ -748,7 +809,20 @@ class NativeLayerBatchProcess {
         outLengthsPtr,
         outAreasPtr,
       );
-      if (ok == 0) return null;
+      if (ok == 0) {
+        // Log diagnostic info about why the call failed
+        print(
+          '[NativeBatch] process_layers_batch_phased returned 0. Diagnostics:',
+        );
+        print(
+          '  Inputs: layers=$count, blobLen=$inputBlobLen, srcSize=${srcWidth}x$height, outSize=${outWidth}x$height, useGpuBatch=$useGpuBatch',
+        );
+        print(
+          '  Output ptrs: blob=${outBlobPtr.value == ffi.nullptr ? "nullptr" : "set"}, '
+          'lengths=${outLengthsPtr.value == ffi.nullptr ? "nullptr" : "set"}, areas=${outAreasPtr.value == ffi.nullptr ? "nullptr" : "set"}',
+        );
+        return null;
+      }
 
       final outBlob = outBlobPtr.value;
       final outBlobLen = outBlobLenPtr.value;
@@ -756,8 +830,10 @@ class NativeLayerBatchProcess {
       final outLengths = outLengthsPtr.value;
       final outAreas = outAreasPtr.value;
 
-      if (outBlob == ffi.nullptr || outOffsets == ffi.nullptr ||
-          outLengths == ffi.nullptr || outAreas == ffi.nullptr ||
+      if (outBlob == ffi.nullptr ||
+          outOffsets == ffi.nullptr ||
+          outLengths == ffi.nullptr ||
+          outAreas == ffi.nullptr ||
           outBlobLen <= 0) {
         return null;
       }
@@ -768,26 +844,34 @@ class NativeLayerBatchProcess {
         final off = outOffsets[i];
         final len = outLengths[i];
         if (off < 0 || len <= 0 || off + len > outBlobLen) {
-          freeBytes(outBlob); freeInts(outOffsets);
-          freeInts(outLengths); freeAreas(outAreas);
+          freeBytes(outBlob);
+          freeInts(outOffsets);
+          freeInts(outLengths);
+          freeAreas(outAreas);
           return null;
         }
         final area = outAreas[i];
-        result.add(NativeBatchLayerResult(
-          pngBytes: Uint8List.fromList(blob.sublist(off, off + len)),
-          areaInfo: LayerAreaInfo(
-            totalSolidArea: area.totalSolidArea,
-            largestArea: area.largestArea,
-            smallestArea: area.smallestArea,
-            minX: area.minX, minY: area.minY,
-            maxX: area.maxX, maxY: area.maxY,
-            areaCount: area.areaCount,
+        result.add(
+          NativeBatchLayerResult(
+            pngBytes: Uint8List.fromList(blob.sublist(off, off + len)),
+            areaInfo: LayerAreaInfo(
+              totalSolidArea: area.totalSolidArea,
+              largestArea: area.largestArea,
+              smallestArea: area.smallestArea,
+              minX: area.minX,
+              minY: area.minY,
+              maxX: area.maxX,
+              maxY: area.maxY,
+              areaCount: area.areaCount,
+            ),
           ),
-        ));
+        );
       }
 
-      freeBytes(outBlob); freeInts(outOffsets);
-      freeInts(outLengths); freeAreas(outAreas);
+      freeBytes(outBlob);
+      freeInts(outOffsets);
+      freeInts(outLengths);
+      freeAreas(outAreas);
       return result;
     } catch (_) {
       final outBlob = outBlobPtr.value;
@@ -817,81 +901,118 @@ class NativeLayerBatchProcess {
 
     try {
       _lib = _openLibrary();
-      if (_lib == null) return;
+      if (_lib == null) {
+        print('[NativeBatch] Failed to load native library');
+        return;
+      }
+      print('[NativeBatch] Native library loaded successfully');
 
-      _processBatch = _lib!.lookupFunction<
-          _NativeProcessLayersBatch,
-          _DartProcessLayersBatch>('process_layers_batch');
-      _setBatchThreads = _lib!.lookupFunction<
-          _NativeSetProcessBatchThreads,
-          _DartSetProcessBatchThreads>('set_process_layers_batch_threads');
-      _setBatchAnalytics = _lib!.lookupFunction<
-          _NativeSetProcessBatchAnalytics,
-          _DartSetProcessBatchAnalytics>('set_process_layers_batch_analytics');
-        _getLastBackend = _lib!.lookupFunction<
-          _NativeGetProcessLastBackend,
-          _DartGetProcessLastBackend>('process_layers_last_backend');
-        _getLastGpuAttempts = _lib!.lookupFunction<
-          _NativeGetProcessLastGpuAttempts,
-          _DartGetProcessLastGpuAttempts>('process_layers_last_gpu_attempts');
-        _getLastGpuSuccesses = _lib!.lookupFunction<
-          _NativeGetProcessLastGpuSuccesses,
-          _DartGetProcessLastGpuSuccesses>('process_layers_last_gpu_successes');
-        _getLastGpuFallbacks = _lib!.lookupFunction<
-          _NativeGetProcessLastGpuFallbacks,
-          _DartGetProcessLastGpuFallbacks>('process_layers_last_gpu_fallbacks');
-          _getLastCudaError = _lib!.lookupFunction<
+      _processBatch = _lib!
+          .lookupFunction<_NativeProcessLayersBatch, _DartProcessLayersBatch>(
+            'process_layers_batch',
+          );
+      print('[NativeBatch] process_layers_batch function loaded');
+      _setBatchThreads = _lib!
+          .lookupFunction<
+            _NativeSetProcessBatchThreads,
+            _DartSetProcessBatchThreads
+          >('set_process_layers_batch_threads');
+      _setBatchAnalytics = _lib!
+          .lookupFunction<
+            _NativeSetProcessBatchAnalytics,
+            _DartSetProcessBatchAnalytics
+          >('set_process_layers_batch_analytics');
+      _getLastBackend = _lib!
+          .lookupFunction<
+            _NativeGetProcessLastBackend,
+            _DartGetProcessLastBackend
+          >('process_layers_last_backend');
+      _getLastGpuAttempts = _lib!
+          .lookupFunction<
+            _NativeGetProcessLastGpuAttempts,
+            _DartGetProcessLastGpuAttempts
+          >('process_layers_last_gpu_attempts');
+      _getLastGpuSuccesses = _lib!
+          .lookupFunction<
+            _NativeGetProcessLastGpuSuccesses,
+            _DartGetProcessLastGpuSuccesses
+          >('process_layers_last_gpu_successes');
+      _getLastGpuFallbacks = _lib!
+          .lookupFunction<
+            _NativeGetProcessLastGpuFallbacks,
+            _DartGetProcessLastGpuFallbacks
+          >('process_layers_last_gpu_fallbacks');
+      _getLastCudaError = _lib!
+          .lookupFunction<
             _NativeGetProcessLastCudaError,
-            _DartGetProcessLastCudaError>('process_layers_last_cuda_error');
-        _getLastThreadCount = _lib!.lookupFunction<
-          _NativeGetProcessLastThreadCount,
-          _DartGetProcessLastThreadCount>('process_layers_last_thread_count');
-        _getLastThreadStats = _lib!.lookupFunction<
-          _NativeGetProcessLastThreadStats,
-          _DartGetProcessLastThreadStats>('process_layers_last_thread_stats');
-      _freeBuffer = _lib!
-          .lookupFunction<_NativeFreeBuffer, _DartFreeBuffer>('free_native_buffer');
-      _freeIntBuffer = _lib!.lookupFunction<
-          _NativeFreeIntBuffer,
-          _DartFreeIntBuffer>('free_native_int_buffer');
-      _freeAreaBuffer = _lib!.lookupFunction<
-          _NativeFreeAreaBuffer,
-          _DartFreeAreaBuffer>('free_native_area_buffer');
+            _DartGetProcessLastCudaError
+          >('process_layers_last_cuda_error');
+      _getLastThreadCount = _lib!
+          .lookupFunction<
+            _NativeGetProcessLastThreadCount,
+            _DartGetProcessLastThreadCount
+          >('process_layers_last_thread_count');
+      _getLastThreadStats = _lib!
+          .lookupFunction<
+            _NativeGetProcessLastThreadStats,
+            _DartGetProcessLastThreadStats
+          >('process_layers_last_thread_stats');
+      _freeBuffer = _lib!.lookupFunction<_NativeFreeBuffer, _DartFreeBuffer>(
+        'free_native_buffer',
+      );
+      _freeIntBuffer = _lib!
+          .lookupFunction<_NativeFreeIntBuffer, _DartFreeIntBuffer>(
+            'free_native_int_buffer',
+          );
+      _freeAreaBuffer = _lib!
+          .lookupFunction<_NativeFreeAreaBuffer, _DartFreeAreaBuffer>(
+            'free_native_area_buffer',
+          );
 
       // --- Phased pipeline + CUDA info (optional, may not be linked) ---
       try {
-        _getLastGpuBatchOk = _lib!.lookupFunction<
-            _NativeGetProcessLastGpuBatchOk,
-            _DartGetProcessLastGpuBatchOk>('process_layers_last_gpu_batch_ok');
-        _processBatchPhased = _lib!.lookupFunction<
-            _NativeProcessLayersBatchPhased,
-            _DartProcessLayersBatchPhased>('process_layers_batch_phased');
+        _getLastGpuBatchOk = _lib!
+            .lookupFunction<
+              _NativeGetProcessLastGpuBatchOk,
+              _DartGetProcessLastGpuBatchOk
+            >('process_layers_last_gpu_batch_ok');
+        _processBatchPhased = _lib!
+            .lookupFunction<
+              _NativeProcessLayersBatchPhased,
+              _DartProcessLayersBatchPhased
+            >('process_layers_batch_phased');
       } catch (_) {
         _getLastGpuBatchOk = null;
         _processBatchPhased = null;
       }
 
-        try {
-        _cudaInit = _lib!.lookupFunction<
-          _NativeGpuCudaInit, _DartGpuCudaInit>('gpu_cuda_info_init');
-        _cudaDeviceName = _lib!.lookupFunction<
-          _NativeGpuCudaDeviceName,
-          _DartGpuCudaDeviceName>('gpu_cuda_info_device_name');
-        _cudaVram = _lib!.lookupFunction<
-          _NativeGpuCudaVram, _DartGpuCudaVram>('gpu_cuda_info_vram_bytes');
-        _cudaHasTensorCores = _lib!.lookupFunction<
-          _NativeGpuCudaI32,
-          _DartGpuCudaI32>('gpu_cuda_info_has_tensor_cores');
-        _cudaComputeCap = _lib!.lookupFunction<
-          _NativeGpuCudaI32,
-          _DartGpuCudaI32>('gpu_cuda_info_compute_capability');
-        _cudaMpCount = _lib!.lookupFunction<
-          _NativeGpuCudaI32,
-          _DartGpuCudaI32>('gpu_cuda_info_multiprocessor_count');
-        _cudaMaxConcurrent = _lib!.lookupFunction<
-            ffi.Int32 Function(ffi.Int32, ffi.Int32, ffi.Int32, ffi.Int32),
-            int Function(int, int, int, int)>(
-            'gpu_cuda_info_max_concurrent_layers');
+      try {
+        _cudaInit = _lib!.lookupFunction<_NativeGpuCudaInit, _DartGpuCudaInit>(
+          'gpu_cuda_info_init',
+        );
+        _cudaDeviceName = _lib!
+            .lookupFunction<_NativeGpuCudaDeviceName, _DartGpuCudaDeviceName>(
+              'gpu_cuda_info_device_name',
+            );
+        _cudaVram = _lib!.lookupFunction<_NativeGpuCudaVram, _DartGpuCudaVram>(
+          'gpu_cuda_info_vram_bytes',
+        );
+        _cudaHasTensorCores = _lib!
+            .lookupFunction<_NativeGpuCudaI32, _DartGpuCudaI32>(
+              'gpu_cuda_info_has_tensor_cores',
+            );
+        _cudaComputeCap = _lib!
+            .lookupFunction<_NativeGpuCudaI32, _DartGpuCudaI32>(
+              'gpu_cuda_info_compute_capability',
+            );
+        _cudaMpCount = _lib!.lookupFunction<_NativeGpuCudaI32, _DartGpuCudaI32>(
+          'gpu_cuda_info_multiprocessor_count',
+        );
+        _cudaMaxConcurrent = _lib!
+            .lookupFunction<
+              ffi.Int32 Function(ffi.Int32, ffi.Int32, ffi.Int32, ffi.Int32),
+              int Function(int, int, int, int)
+            >('gpu_cuda_info_max_concurrent_layers');
       } catch (_) {
         _cudaInit = null;
         _cudaDeviceName = null;
@@ -933,19 +1054,98 @@ class NativeLayerBatchProcess {
 
     if (Platform.isWindows) {
       final candidate = '$exeDir${Platform.pathSeparator}area_stats.dll';
+      print('[NativeBatch] Windows: trying $candidate');
       if (File(candidate).existsSync()) {
-        return ffi.DynamicLibrary.open(candidate);
+        print('[NativeBatch] Found at $candidate');
+        try {
+          return ffi.DynamicLibrary.open(candidate);
+        } catch (e) {
+          print('[NativeBatch] ERROR: Failed to load from $candidate: $e');
+          print(
+            '[NativeBatch] This usually means missing dependencies. Trying system PATH...',
+          );
+        }
       }
-      return ffi.DynamicLibrary.open('area_stats.dll');
+      print(
+        '[NativeBatch] Not found at $candidate, trying system path: area_stats.dll',
+      );
+      try {
+        final lib = ffi.DynamicLibrary.open('area_stats.dll');
+        print(
+          '[NativeBatch] Successfully loaded area_stats.dll from system PATH',
+        );
+        return lib;
+      } catch (e) {
+        print('[NativeBatch] ERROR: FAILED to load area_stats.dll: $e');
+        print('[NativeBatch]');
+        print(
+          '[NativeBatch] WARNING: NATIVE LIBRARY NOT AVAILABLE ON THIS SYSTEM',
+        );
+        print(
+          '[NativeBatch] This is likely a missing runtime dependency issue.',
+        );
+        print('[NativeBatch]');
+        print('[NativeBatch] On Windows, area_stats.dll requires:');
+        print(
+          '[NativeBatch]   • Microsoft Visual C++ Runtime (vcruntime140.dll or similar)',
+        );
+        print('[NativeBatch]   • zlib runtime libraries');
+        print(
+          '[NativeBatch]   • Standard Windows system DLLs (kernel32.dll, msvcrt.dll, etc)',
+        );
+        print('[NativeBatch]');
+        print('[NativeBatch] Solutions:');
+        print(
+          '[NativeBatch]   1. Install Visual C++ Redistributable from microsoft.com',
+        );
+        print(
+          '[NativeBatch]   2. Check if area_stats.dll is in the app directory',
+        );
+        print(
+          '[NativeBatch]   3. Ensure Windows is up to date with latest patches',
+        );
+        print(
+          '[NativeBatch]   4. Try the app on a different Windows system to isolate the issue',
+        );
+        print('[NativeBatch]');
+        return null;
+      }
     }
 
     if (Platform.isLinux) {
       final libDir = '$exeDir${Platform.pathSeparator}lib';
       final candidate = '$libDir${Platform.pathSeparator}libarea_stats.so';
+      print('[NativeBatch] Linux: trying $candidate');
       if (File(candidate).existsSync()) {
-        return ffi.DynamicLibrary.open(candidate);
+        print('[NativeBatch] Found at $candidate');
+        try {
+          return ffi.DynamicLibrary.open(candidate);
+        } catch (e) {
+          print('[NativeBatch] ERROR: Failed to load from $candidate: $e');
+          print('[NativeBatch] Trying system path...');
+        }
       }
-      return ffi.DynamicLibrary.open('libarea_stats.so');
+      print(
+        '[NativeBatch] Not found at $candidate, trying system path: libarea_stats.so',
+      );
+      try {
+        final lib = ffi.DynamicLibrary.open('libarea_stats.so');
+        print(
+          '[NativeBatch] Successfully loaded libarea_stats.so from system PATH',
+        );
+        return lib;
+      } catch (e) {
+        print('[NativeBatch] ERROR: Failed to load libarea_stats.so: $e');
+        print('[NativeBatch]');
+        print(
+          '[NativeBatch] WARNING: NATIVE LIBRARY NOT AVAILABLE ON THIS SYSTEM',
+        );
+        print(
+          '[NativeBatch] On Linux, you may need to install: libz-dev, gcc libraries',
+        );
+        print('[NativeBatch]');
+        return null;
+      }
     }
 
     if (Platform.isMacOS) {
@@ -953,12 +1153,40 @@ class NativeLayerBatchProcess {
           '$exeDir${Platform.pathSeparator}..${Platform.pathSeparator}Frameworks';
       final candidate =
           '$frameworksDir${Platform.pathSeparator}libarea_stats.dylib';
+      print('[NativeBatch] macOS: trying $candidate');
       if (File(candidate).existsSync()) {
-        return ffi.DynamicLibrary.open(candidate);
+        print('[NativeBatch] Found at $candidate');
+        try {
+          return ffi.DynamicLibrary.open(candidate);
+        } catch (e) {
+          print('[NativeBatch] ERROR: Failed to load from $candidate: $e');
+          print('[NativeBatch] Trying system path...');
+        }
       }
-      return ffi.DynamicLibrary.open('libarea_stats.dylib');
+      print(
+        '[NativeBatch] Not found at $candidate, trying system path: libarea_stats.dylib',
+      );
+      try {
+        final lib = ffi.DynamicLibrary.open('libarea_stats.dylib');
+        print(
+          '[NativeBatch] Successfully loaded libarea_stats.dylib from system PATH',
+        );
+        return lib;
+      } catch (e) {
+        print('[NativeBatch] ERROR: Failed to load libarea_stats.dylib: $e');
+        print('[NativeBatch]');
+        print(
+          '[NativeBatch] WARNING: NATIVE LIBRARY NOT AVAILABLE ON THIS SYSTEM',
+        );
+        print(
+          '[NativeBatch] On macOS, this usually means the dylib is missing or not codesigned.',
+        );
+        print('[NativeBatch]');
+        return null;
+      }
     }
 
+    print('[NativeBatch] WARNING: Unsupported platform for native library');
     return null;
   }
 }

@@ -582,6 +582,16 @@ Future<void> conversionWorkerEntry(ConversionWorkerRequest req) async {
         envKey: 'VOXELSHIFT_AUTOTUNE',
         defaultValue: true,
       );
+
+      // Check if native batch processing is available
+      if (!nativeBatch.available) {
+        final diagnostic = nativeBatch.getUnavailableDiagnostic();
+        log('WARNING: Native batch processing unavailable: $diagnostic');
+        log(
+          'WARNING: Conversion will proceed but performance may be degraded.',
+        );
+      }
+
       if (autoTuneEnabled &&
           gpuMode == 'auto' &&
           nativeBatch.available &&
@@ -729,7 +739,9 @@ Future<void> conversionWorkerEntry(ConversionWorkerRequest req) async {
           );
           sw.stop();
           if (result == null || result.length != sampleSize) {
-            log('Auto-tuner: $name run failed.');
+            log(
+              'Auto-tuner: $name run failed (result: ${result == null ? 'null' : 'length ${result.length} != $sampleSize'})',
+            );
             return null;
           }
           final attempts = nativeBatch.lastGpuAttempts;
@@ -783,6 +795,10 @@ Future<void> conversionWorkerEntry(ConversionWorkerRequest req) async {
           cpuSw.stop();
           if (cpuResult != null && cpuResult.length == sampleSize) {
             cpuTime = cpuSw.elapsed;
+          } else {
+            log(
+              'Auto-tuner: CPU benchmark failed (result: ${cpuResult == null ? 'null' : 'length ${cpuResult.length} != $sampleSize'})',
+            );
           }
 
           if (gpuRequested) {
@@ -851,6 +867,14 @@ Future<void> conversionWorkerEntry(ConversionWorkerRequest req) async {
           gpuAccelActive = false;
           processingMaxConcurrency = cpuWorkersFinal;
           processingEngine = 'CPU Native';
+
+          // If CPU benchmark failed, log it
+          if (cpuTime == null) {
+            log(
+              'Auto-tuner: CPU benchmark was null, falling back to scaled workers ($cpuWorkersFinal)',
+            );
+          }
+
           log(
             'Auto-tuner selected CPU '
             '[CPU: ${cpuTime?.inMilliseconds ?? -1}ms, GPU: ${bestGpuTime?.inMilliseconds ?? -1}ms].',
