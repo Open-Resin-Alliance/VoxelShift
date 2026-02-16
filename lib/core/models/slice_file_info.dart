@@ -17,7 +17,7 @@ class SliceFileInfo {
   final double liftSpeed;
   final double retractSpeed;
   final String? machineName;
-  final Uint8List? thumbnailPng;
+  final Uint8List? thumbnailPng; // GUI thumbnail (800x480)
 
   const SliceFileInfo({
     required this.sourcePath,

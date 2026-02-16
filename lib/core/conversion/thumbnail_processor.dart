@@ -1,33 +1,54 @@
 import 'dart:typed_data';
 import 'package:image/image.dart' as img;
 
+/// Thumbnail pair: GUI thumbnail and NanoDLP file thumbnail.
+class ThumbnailPair {
+  final Uint8List? guiThumbnail;
+  final Uint8List? nanodlpThumbnail;
+
+  ThumbnailPair({required this.guiThumbnail, required this.nanodlpThumbnail});
+}
+
 /// Utilities for processing and enhancing thumbnails.
 class ThumbnailProcessor {
-  /// Target dimensions for VoxelShift thumbnails (NanoDLP standard).
-  static const int targetWidth = 800;
-  static const int targetHeight = 480;
+  /// Target dimensions for VoxelShift GUI thumbnails.
+  static const int guiWidth = 800;
+  static const int guiHeight = 480;
+
+  /// Target dimensions for NanoDLP file thumbnails.
+  static const int nanodlpWidth = 1600;
+  static const int nanodlpHeight = 960;
+
   static const int _blackThreshold = 20;
 
-  /// Process a thumbnail: crop pure-black borders and regenerate with
-  /// VoxelShift branding (gradient background).
-  static Uint8List? processThumbail(Uint8List? inputPng) {
-    if (inputPng == null || inputPng.isEmpty) return null;
+  /// Process a thumbnail into two sizes: 800x480 for GUI and 1600x960 for NanoDLP.
+  static ThumbnailPair processThumbail(Uint8List? inputPng) {
+    if (inputPng == null || inputPng.isEmpty) {
+      return ThumbnailPair(guiThumbnail: null, nanodlpThumbnail: null);
+    }
 
     try {
       final original = img.decodeImage(inputPng);
-      if (original == null) return null;
+      if (original == null) {
+        return ThumbnailPair(guiThumbnail: null, nanodlpThumbnail: null);
+      }
 
       final cropped = _cropBlackBorders(original);
-      return _generateBrandedThumbnail(cropped);
+      return ThumbnailPair(
+        guiThumbnail: _generateBrandedThumbnail(cropped, guiWidth, guiHeight),
+        nanodlpThumbnail: _generateBrandedThumbnail(
+          cropped,
+          nanodlpWidth,
+          nanodlpHeight,
+        ),
+      );
     } catch (_) {
-      return inputPng;
+      return ThumbnailPair(guiThumbnail: inputPng, nanodlpThumbnail: inputPng);
     }
   }
 
   static bool _isBlack(img.Pixel p) =>
-      p.r < _blackThreshold &&
-      p.g < _blackThreshold &&
-      p.b < _blackThreshold;
+      p.r < _blackThreshold && p.g < _blackThreshold && p.b < _blackThreshold;
 
   /// Crop pure-black borders from all sides of the image.
   static img.Image _cropBlackBorders(img.Image image) {
@@ -88,7 +109,11 @@ class ThumbnailProcessor {
       (a + (b - a) * t).round().clamp(0, 255);
 
   /// Generate a VoxelShift-branded thumbnail with gradient background.
-  static Uint8List _generateBrandedThumbnail(img.Image croppedModel) {
+  static Uint8List _generateBrandedThumbnail(
+    img.Image croppedModel,
+    int targetWidth,
+    int targetHeight,
+  ) {
     // 1. Create RGBA canvas
     final canvas = img.Image(
       width: targetWidth,
@@ -135,7 +160,12 @@ class ThumbnailProcessor {
           rgbaModel.setPixelRgba(x, y, 0, 0, 0, 0);
         } else {
           rgbaModel.setPixelRgba(
-            x, y, p.r.toInt(), p.g.toInt(), p.b.toInt(), 255,
+            x,
+            y,
+            p.r.toInt(),
+            p.g.toInt(),
+            p.b.toInt(),
+            255,
           );
         }
       }
