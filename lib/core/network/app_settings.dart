@@ -8,27 +8,29 @@ class PostProcessingSettings {
   String gpuMode;
   String gpuBackend;
   bool autotune;
-  bool fastMode;
   bool usePhased;
   bool analyticsMode;
+  bool disableNativeAcceleration;
   String recompressMode;
   int? processPngLevel;
   int? gpuHostWorkers;
   int? cpuHostWorkers;
   int? cudaHostWorkers;
+  double? workerMultiplierCap; // Max worker count = cores * multiplier
 
   PostProcessingSettings({
     this.gpuMode = 'auto',
     this.gpuBackend = 'auto',
     this.autotune = true,
-    this.fastMode = false,
     this.usePhased = false,
     this.analyticsMode = false,
+    this.disableNativeAcceleration = false,
     this.recompressMode = 'adaptive',
     this.processPngLevel,
     this.gpuHostWorkers,
     this.cpuHostWorkers,
     this.cudaHostWorkers,
+    this.workerMultiplierCap,
   });
 
   factory PostProcessingSettings.fromJson(Map<String, dynamic> json) {
@@ -36,14 +38,16 @@ class PostProcessingSettings {
       gpuMode: (json['gpuMode'] as String?) ?? 'auto',
       gpuBackend: (json['gpuBackend'] as String?) ?? 'auto',
       autotune: (json['autotune'] as bool?) ?? true,
-      fastMode: (json['fastMode'] as bool?) ?? false,
       usePhased: (json['usePhased'] as bool?) ?? false,
       analyticsMode: (json['analyticsMode'] as bool?) ?? false,
+      disableNativeAcceleration:
+          (json['disableNativeAcceleration'] as bool?) ?? false,
       recompressMode: (json['recompressMode'] as String?) ?? 'adaptive',
       processPngLevel: json['processPngLevel'] as int?,
       gpuHostWorkers: json['gpuHostWorkers'] as int?,
       cpuHostWorkers: json['cpuHostWorkers'] as int?,
       cudaHostWorkers: json['cudaHostWorkers'] as int?,
+      workerMultiplierCap: (json['workerMultiplierCap'] as num?)?.toDouble(),
     );
   }
 
@@ -52,14 +56,15 @@ class PostProcessingSettings {
       'gpuMode': gpuMode,
       'gpuBackend': gpuBackend,
       'autotune': autotune,
-      'fastMode': fastMode,
       'usePhased': usePhased,
       'analyticsMode': analyticsMode,
+      'disableNativeAcceleration': disableNativeAcceleration,
       'recompressMode': recompressMode,
       'processPngLevel': processPngLevel,
       'gpuHostWorkers': gpuHostWorkers,
       'cpuHostWorkers': cpuHostWorkers,
       'cudaHostWorkers': cudaHostWorkers,
+      'workerMultiplierCap': workerMultiplierCap,
     };
   }
 }
@@ -113,8 +118,8 @@ class AppSettings {
     this.defaultMaterialProfileId,
     PostProcessingSettings? postProcessing,
     Map<String, BenchmarkCacheEntry>? benchmarkCache,
-  })  : postProcessing = postProcessing ?? PostProcessingSettings(),
-        benchmarkCache = benchmarkCache ?? <String, BenchmarkCacheEntry>{};
+  }) : postProcessing = postProcessing ?? PostProcessingSettings(),
+       benchmarkCache = benchmarkCache ?? <String, BenchmarkCacheEntry>{};
 
   factory AppSettings.fromJson(Map<String, dynamic> json) {
     final pp = json['postProcessing'];
@@ -123,8 +128,9 @@ class AppSettings {
     if (cache is Map) {
       for (final entry in cache.entries) {
         if (entry.key is String && entry.value is Map) {
-          parsedCache[entry.key as String] =
-              BenchmarkCacheEntry.fromJson(Map<String, dynamic>.from(entry.value));
+          parsedCache[entry.key as String] = BenchmarkCacheEntry.fromJson(
+            Map<String, dynamic>.from(entry.value),
+          );
         }
       }
     }
