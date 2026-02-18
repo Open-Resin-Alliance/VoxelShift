@@ -49,6 +49,13 @@ class _ConversionScreenState extends State<ConversionScreen> {
   // Upload cancellation
   bool _cancelUpload = false;
 
+  // Conversion cancellation
+  bool _cancelConversion = false;
+
+  // File analysis
+  String _analysisMessage = 'Opening file...';
+  bool _cancelAnalysis = false;
+
   // File details expansion
   bool _showFileDetailsExposure = false;
 
@@ -815,57 +822,96 @@ class _ConversionScreenState extends State<ConversionScreen> {
   Future<void> _loadFile(String path) async {
     final fileName = path.split(Platform.pathSeparator).last;
 
-    // Show loading dialog
+    // Reset cancellation flag
+    _cancelAnalysis = false;
+
+    // Show loading dialog with dynamic progress
     if (!mounted) return;
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (ctx) => _buildCardDialog(
-        width: 420,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            const SizedBox(height: 8),
-            const SizedBox(
-              width: 48,
-              height: 48,
-              child: CircularProgressIndicator(strokeWidth: 3),
-            ),
-            const SizedBox(height: 20),
-            Text(
-              'Analyzing File',
-              style: Theme.of(
-                ctx,
-              ).textTheme.titleMedium!.copyWith(fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: 10),
-            Text(
-              fileName,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.6),
-                fontSize: 12,
-                fontFamily: 'monospace',
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => _buildCardDialog(
+          width: 420,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              const SizedBox(height: 8),
+              const SizedBox(
+                width: 48,
+                height: 48,
+                child: CircularProgressIndicator(strokeWidth: 3),
               ),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            ),
-            const SizedBox(height: 14),
-            Text(
-              'Reading header and layers...',
-              style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.5),
-                fontSize: 12,
+              const SizedBox(height: 20),
+              Text(
+                'Analyzing File',
+                style: Theme.of(
+                  ctx,
+                ).textTheme.titleMedium!.copyWith(fontWeight: FontWeight.w600),
               ),
-            ),
-          ],
+              const SizedBox(height: 10),
+              Text(
+                fileName,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.6),
+                  fontSize: 12,
+                  fontFamily: 'monospace',
+                ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: 14),
+              ValueListenableBuilder<String>(
+                valueListenable: ValueNotifier(_analysisMessage),
+                builder: (context, message, _) => Text(
+                  message,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.5),
+                    fontSize: 12,
+                    height: 1.4,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 24),
+              SizedBox(
+                width: double.infinity,
+                height: 44,
+                child: OutlinedButton(
+                  onPressed: () {
+                    _cancelAnalysis = true;
+                    Navigator.pop(ctx);
+                  },
+                  child: const Text('Cancel', style: TextStyle(fontSize: 15)),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
 
+    final progressNotifier = ValueNotifier<String>(_analysisMessage);
+
     try {
-      final info = await _converter.readFileInfo(path);
+      // Read file info with progress updates
+      final info = await _converter.readFileInfo(
+        path,
+        onProgress: (msg) {
+          if (!_cancelAnalysis && mounted) {
+            _analysisMessage = msg;
+            progressNotifier.value = msg;
+          }
+        },
+      );
+
+      if (_cancelAnalysis) {
+        if (mounted) Navigator.pop(context);
+        return;
+      }
+
       final profiles = PrinterProfileDetector.getTargetProfilesForResolution(
         info.resolutionX,
         info.resolutionY,
@@ -876,10 +922,20 @@ class _ConversionScreenState extends State<ConversionScreen> {
 
       if (!mounted) return;
 
-      // Check for corrupt layers
-      final corruptLayers = await _converter.checkForCorruptLayers(path);
-      if (corruptLayers.isNotEmpty && mounted) {
-        _showCorruptLayersWarning(corruptLayers, info.layerCount);
+      // Check for corrupt layers with progress updates
+      final corruptLayers = await _converter.checkForCorruptLayers(
+        path,
+        onProgress: (msg) {
+          if (!_cancelAnalysis && mounted) {
+            _analysisMessage = msg;
+            progressNotifier.value = msg;
+          }
+        },
+      );
+
+      if (_cancelAnalysis) {
+        if (mounted) Navigator.pop(context);
+        return;
       }
 
       debugPrint(
@@ -917,14 +973,19 @@ class _ConversionScreenState extends State<ConversionScreen> {
         _selectedProfile = selectedProfile;
       });
 
+      if (!mounted) return;
+      Navigator.pop(context); // Close loading dialog BEFORE showing warnings
+
+      // Now show warning dialogs after analyzing dialog is dismissed
+      if (corruptLayers.isNotEmpty && mounted) {
+        _showCorruptLayersWarning(corruptLayers, info.layerCount);
+      }
+
       // Check for resolution mismatch with active device
       if (widget.activeDevice != null) {
         _checkResolutionMismatch(info, widget.activeDevice!);
         await _loadResinProfiles();
       }
-
-      if (!mounted) return;
-      Navigator.pop(context); // Close loading dialog
     } catch (e) {
       if (!mounted) return;
       Navigator.pop(context); // Close loading dialog
@@ -938,6 +999,16 @@ class _ConversionScreenState extends State<ConversionScreen> {
 
   // ── Conversion ────────────────────────────────────────────
 
+  void _cancelCurrentConversion() {
+    setState(() {
+      _cancelConversion = true;
+      _isConverting = false;
+      _uploadAfterConversion = null;
+      _progress = null;
+      _errorMessage = 'Conversion cancelled by user.';
+    });
+  }
+
   Future<void> _startConversion({required bool uploadAfter}) async {
     if (_selectedFilePath == null || _selectedProfile == null) return;
 
@@ -948,6 +1019,7 @@ class _ConversionScreenState extends State<ConversionScreen> {
       _result = null;
       _errorMessage = null;
       _hasLogs = false;
+      _cancelConversion = false;
     });
     _logKey.currentState?.clear();
 
@@ -957,13 +1029,22 @@ class _ConversionScreenState extends State<ConversionScreen> {
         options: ConversionOptions(targetProfile: _selectedProfile),
         onProgress: (p) {
           // Update progress state without rebuilding entire widget tree
-          if (mounted) {
+          if (mounted && !_cancelConversion) {
             _progress = p;
             // Only rebuild progress section if it exists
             _progressKey.currentState?.updateProgress(p);
           }
         },
       );
+
+      // Check if cancelled during conversion
+      if (_cancelConversion) {
+        setState(() {
+          _isConverting = false;
+          _uploadAfterConversion = null;
+        });
+        return;
+      }
 
       setState(() {
         _result = result;
@@ -975,10 +1056,11 @@ class _ConversionScreenState extends State<ConversionScreen> {
       if (uploadAfter &&
           result.success &&
           widget.activeDevice != null &&
-          mounted) {
+          mounted &&
+          !_cancelConversion) {
         // Small delay so the user sees the result first
         await Future.delayed(const Duration(milliseconds: 400));
-        if (!mounted) return;
+        if (!mounted || _cancelConversion) return;
         await _uploadToActivePrinter(
           overrideResin: _materialProfile,
           startPrintAfter: _autoStartPrint,
@@ -990,11 +1072,13 @@ class _ConversionScreenState extends State<ConversionScreen> {
         setState(() => _uploadAfterConversion = null);
       }
     } catch (e) {
-      setState(() {
-        _errorMessage = 'Conversion failed: $e';
-        _isConverting = false;
-        _uploadAfterConversion = null;
-      });
+      if (!_cancelConversion) {
+        setState(() {
+          _errorMessage = 'Conversion failed: $e';
+          _isConverting = false;
+          _uploadAfterConversion = null;
+        });
+      }
     }
   }
 
@@ -2761,24 +2845,23 @@ class _ConversionScreenState extends State<ConversionScreen> {
           child: SizedBox(
             height: 48,
             child: ElevatedButton.icon(
-              onPressed: canConvert
-                  ? () => _startConversion(uploadAfter: false)
-                  : null,
+              onPressed: isConvertingWithoutUpload
+                  ? _cancelCurrentConversion
+                  : (canConvert
+                        ? () => _startConversion(uploadAfter: false)
+                        : null),
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.white.withValues(alpha: 0.08),
+                backgroundColor: isConvertingWithoutUpload
+                    ? Colors.red.shade700
+                    : Colors.white.withValues(alpha: 0.08),
                 foregroundColor: Colors.white.withValues(alpha: 0.8),
               ),
               icon: isConvertingWithoutUpload
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    )
+                  ? const Icon(Icons.close)
                   : const Icon(Icons.download),
-              label: const Text('Just Convert'),
+              label: Text(
+                isConvertingWithoutUpload ? 'Cancel' : 'Just Convert',
+              ),
             ),
           ),
         ),
@@ -2786,24 +2869,23 @@ class _ConversionScreenState extends State<ConversionScreen> {
           child: SizedBox(
             height: 48,
             child: ElevatedButton.icon(
-              onPressed: (canConvert && _canUpload)
-                  ? () => _startConversion(uploadAfter: true)
-                  : null,
+              onPressed: isConvertingWithUpload
+                  ? _cancelCurrentConversion
+                  : ((canConvert && _canUpload)
+                        ? () => _startConversion(uploadAfter: true)
+                        : null),
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.cyan.shade700,
+                backgroundColor: isConvertingWithUpload
+                    ? Colors.red.shade700
+                    : Colors.cyan.shade700,
                 foregroundColor: Colors.white,
               ),
               icon: isConvertingWithUpload
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    )
+                  ? const Icon(Icons.close)
                   : const Icon(Icons.cloud_upload),
-              label: const Text('Convert & Upload'),
+              label: Text(
+                isConvertingWithUpload ? 'Cancel' : 'Convert & Upload',
+              ),
             ),
           ),
         ),
@@ -2843,6 +2925,14 @@ class _ConversionScreenState extends State<ConversionScreen> {
     final sizeMb = r.outputFileSizeBytes / 1024 / 1024;
     final hasActiveDevice = widget.activeDevice != null;
     return Card(
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.only(
+          topLeft: Radius.zero,
+          bottomLeft: Radius.zero,
+          topRight: Radius.circular(12),
+          bottomRight: Radius.circular(12),
+        ),
+      ),
       child: Container(
         decoration: BoxDecoration(
           border: Border(
@@ -2910,6 +3000,14 @@ class _ConversionScreenState extends State<ConversionScreen> {
 
   Widget _buildErrorCard() {
     return Card(
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.only(
+          topLeft: Radius.zero,
+          bottomLeft: Radius.zero,
+          topRight: Radius.circular(12),
+          bottomRight: Radius.circular(12),
+        ),
+      ),
       child: Container(
         decoration: BoxDecoration(
           border: Border(
