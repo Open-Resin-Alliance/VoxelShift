@@ -97,6 +97,17 @@ install(TARGETS area_stats
   LIBRARY DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
   COMPONENT Runtime)
 
+# Install zlib1.dll if present in windows/lib/ directory
+set(ZLIB_DLL_PATH "${CMAKE_CURRENT_SOURCE_DIR}/lib/zlib1.dll")
+if(EXISTS "${ZLIB_DLL_PATH}")
+  message(STATUS "Found zlib1.dll, will bundle with release")
+  install(FILES "${ZLIB_DLL_PATH}"
+    DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
+    COMPONENT Runtime)
+else()
+  message(STATUS "zlib1.dll not found in windows/lib/, skipping (optional)")
+endif()
+
 install(FILES "${FLUTTER_ICU_DATA_FILE}" DESTINATION "${INSTALL_BUNDLE_DATA_DIR}"
   COMPONENT Runtime)
 

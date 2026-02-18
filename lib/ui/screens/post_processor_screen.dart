@@ -2143,7 +2143,8 @@ class _PostProcessorScreenState extends State<PostProcessorScreen> {
           ),
           const SizedBox(height: 30),
           _buildTelemetryContainer(isDeviceProcessing: isDeviceProcessing),
-          if (_conversionProgress?.workers != null &&
+          if (!isDeviceProcessing &&
+              _conversionProgress?.workers != null &&
               _conversionProgress!.workers! > 5) ...[
             const SizedBox(height: 14),
             Container(
@@ -2166,7 +2167,7 @@ class _PostProcessorScreenState extends State<PostProcessorScreen> {
                   ),
                   const SizedBox(width: 8),
                   Text(
-                    'Heavy processing: RGB lighting or UI may briefly stall',
+                    'High local CPU load: UI may briefly stutter during conversion',
                     style: TextStyle(
                       fontSize: 11,
                       color: Colors.orange.shade200,

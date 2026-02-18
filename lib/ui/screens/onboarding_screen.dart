@@ -6,12 +6,9 @@ import '../../core/network/nanodlp_scanner.dart';
 
 /// Onboarding flow: discover and select a printer to set as active.
 class OnboardingScreen extends StatefulWidget {
-  final ValueChanged<NanoDlpDevice> onDeviceSelected;
+  final ValueChanged<NanoDlpDevice?> onDeviceSelected;
 
-  const OnboardingScreen({
-    super.key,
-    required this.onDeviceSelected,
-  });
+  const OnboardingScreen({super.key, required this.onDeviceSelected});
 
   @override
   State<OnboardingScreen> createState() => _OnboardingScreenState();
@@ -96,361 +93,225 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   }
 
   @override
-  @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFF0F172A),
       body: Stack(
         children: [
           SingleChildScrollView(
-          child: Padding(
             padding: EdgeInsets.fromLTRB(
-              24,
-              MediaQuery.of(context).padding.top + 24,
-              24,
-              24,
+              20,
+              MediaQuery.of(context).padding.top + 12,
+              20,
+              20,
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                  // Header
-                  Row(
-                    children: [
-                      Icon(Icons.view_in_ar,
+            child: Align(
+              alignment: Alignment.topCenter,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 980),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.view_in_ar,
                           color: Theme.of(context).colorScheme.primary,
-                          size: 32),
-                      const SizedBox(width: 12),
-                      const Text(
-                        'VoxelShift',
-                        style: TextStyle(
-                          fontSize: 28,
-                          fontWeight: FontWeight.w700,
+                          size: 28,
                         ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 32),
-
-                  // Title
-                  const Text(
-                    'Welcome to VoxelShift',
-                    style: TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Set up your NanoDLP printer to get started',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Colors.white.withValues(alpha: 0.7),
-                    ),
-                  ),
-                  const SizedBox(height: 32),
-
-                  // Step indicator
-                  _buildStep(
-                    number: 1,
-                    title: 'Discover Your Printer',
-                    description:
-                        'Scanning your local network for NanoDLP instances...',
-                    isActive: true,
-                  ),
-                  const SizedBox(height: 20),
-
-                  // Manual IP
-                  Text(
-                    'Scan a specific IP (optional)',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.white.withValues(alpha: 0.6),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: _manualIpController,
-                    keyboardType: TextInputType.number,
-                    textInputAction: TextInputAction.done,
-                    style: const TextStyle(color: Colors.white),
-                    decoration: InputDecoration(
-                      hintText: 'e.g. 192.168.1.42',
-                      hintStyle: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.35),
-                      ),
-                      filled: true,
-                      fillColor: Colors.white.withValues(alpha: 0.04),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                        borderSide: BorderSide(
-                          color: Colors.white.withValues(alpha: 0.08),
+                        const SizedBox(width: 10),
+                        const Text(
+                          'VoxelShift',
+                          style: TextStyle(
+                            fontSize: 30,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: -0.5,
+                          ),
                         ),
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                        borderSide: BorderSide(
-                          color: Colors.white.withValues(alpha: 0.08),
-                        ),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                        borderSide: BorderSide(
-                          color: Colors.cyan.withValues(alpha: 0.4),
-                        ),
-                      ),
-                      prefixIcon: Icon(
-                        Icons.router,
-                        color: Colors.cyan.withValues(alpha: 0.6),
-                        size: 18,
-                      ),
+                      ],
                     ),
-                  ),
-                  const SizedBox(height: 20),
-
-                  // Scan progress
-                  if (_isScanning) ...[
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(8),
-                      child: LinearProgressIndicator(
-                        value:
-                            _scanTotal > 0 ? _scanProgress / _scanTotal : null,
-                        minHeight: 6,
+                    const SizedBox(height: 16),
+                    Card(
+                      child: Padding(
+                        padding: const EdgeInsets.all(20),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Welcome to VoxelShift',
+                              style: TextStyle(
+                                fontSize: 24,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              'Find your NanoDLP printer, or continue in local conversion mode.',
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: Colors.white.withValues(alpha: 0.7),
+                              ),
+                            ),
+                            const SizedBox(height: 18),
+                            _buildStep(
+                              number: 1,
+                              title: 'Discover Your Printer',
+                              description:
+                                  'Scanning your local network for NanoDLP instances...',
+                              isActive: true,
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              'Scan a specific IP (optional)',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.white.withValues(alpha: 0.6),
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            TextField(
+                              controller: _manualIpController,
+                              keyboardType: TextInputType.number,
+                              textInputAction: TextInputAction.done,
+                              style: const TextStyle(color: Colors.white),
+                              decoration: InputDecoration(
+                                hintText: 'e.g. 192.168.1.42',
+                                hintStyle: TextStyle(
+                                  color: Colors.white.withValues(alpha: 0.35),
+                                ),
+                                filled: true,
+                                fillColor: Colors.white.withValues(alpha: 0.04),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                  borderSide: BorderSide(
+                                    color: Colors.white.withValues(alpha: 0.08),
+                                  ),
+                                ),
+                                enabledBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                  borderSide: BorderSide(
+                                    color: Colors.white.withValues(alpha: 0.08),
+                                  ),
+                                ),
+                                focusedBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                  borderSide: BorderSide(
+                                    color: Theme.of(context).colorScheme.primary
+                                        .withValues(alpha: 0.55),
+                                  ),
+                                ),
+                                prefixIcon: Icon(
+                                  Icons.router,
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.primary.withValues(alpha: 0.7),
+                                  size: 18,
+                                ),
+                              ),
+                            ),
+                            if (_isScanning) ...[
+                              const SizedBox(height: 14),
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(8),
+                                child: LinearProgressIndicator(
+                                  value: _scanTotal > 0
+                                      ? _scanProgress / _scanTotal
+                                      : null,
+                                  minHeight: 6,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                'Scanned $_scanProgress / $_scanTotal...',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.white.withValues(alpha: 0.6),
+                                ),
+                              ),
+                            ],
+                            const SizedBox(height: 16),
+                            SizedBox(
+                              width: double.infinity,
+                              child: ElevatedButton.icon(
+                                onPressed: _isScanning ? null : _startScan,
+                                icon: _isScanning
+                                    ? const SizedBox(
+                                        width: 16,
+                                        height: 16,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          valueColor:
+                                              AlwaysStoppedAnimation<Color>(
+                                                Colors.white,
+                                              ),
+                                        ),
+                                      )
+                                    : const Icon(Icons.refresh, size: 18),
+                                label: Text(
+                                  _isScanning
+                                      ? 'Scanning...'
+                                      : 'Rescan Network',
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            SizedBox(
+                              width: double.infinity,
+                              child: OutlinedButton.icon(
+                                onPressed: _isFetchingDetails
+                                    ? null
+                                    : () => widget.onDeviceSelected(null),
+                                icon: const Icon(Icons.skip_next, size: 18),
+                                label: const Text('Continue without machine'),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                     const SizedBox(height: 12),
-                    Text(
-                      'Scanned $_scanProgress / $_scanTotal...',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.white.withValues(alpha: 0.6),
-                      ),
-                    ),
-                    const SizedBox(height: 24),
-                  ] else if (_devices.isNotEmpty) ...[
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 12,
-                      ),
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [
-                            Colors.green.withValues(alpha: 0.15),
-                            Colors.teal.withValues(alpha: 0.1),
-                          ],
-                        ),
-                        border: Border.all(
-                          color: Colors.green.withValues(alpha: 0.3),
-                        ),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: Colors.green.withValues(alpha: 0.2),
-                              shape: BoxShape.circle,
-                            ),
-                            child: Icon(
-                              Icons.check_circle_outline,
-                              color: Colors.greenAccent,
-                              size: 20,
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  '${_devices.length} printer${_devices.length == 1 ? '' : 's'} found',
-                                  style: const TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w600,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  'Select a printer to continue',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.white.withValues(alpha: 0.7),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    ..._devices.map((device) => _buildDeviceCard(device)),
-                  ] else if (_scanTotal == 0) ...[
-                    Container(
-                      padding: const EdgeInsets.all(18),
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [
-                            Colors.red.withValues(alpha: 0.12),
-                            Colors.deepOrange.withValues(alpha: 0.08),
-                          ],
-                        ),
-                        border: Border.all(
-                          color: Colors.red.withValues(alpha: 0.35),
-                        ),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(10),
-                            decoration: BoxDecoration(
-                              color: Colors.red.withValues(alpha: 0.2),
-                              shape: BoxShape.circle,
-                            ),
-                            child: Icon(
-                              Icons.wifi_off,
-                              color: Colors.red.shade300,
-                              size: 24,
-                            ),
-                          ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Text(
-                                  'No IPv4 network detected',
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w600,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  'Connect to Wi‑Fi or Ethernet with IPv4 enabled, then rescan.',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.red.shade200
-                                        .withValues(alpha: 0.8),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ] else ...[
-                    Container(
-                      padding: const EdgeInsets.all(18),
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [
-                            Colors.orange.withValues(alpha: 0.15),
-                            Colors.amber.withValues(alpha: 0.1),
-                          ],
-                        ),
-                        border: Border.all(
-                          color: Colors.orange.withValues(alpha: 0.4),
-                        ),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(10),
-                            decoration: BoxDecoration(
-                              color: Colors.orange.withValues(alpha: 0.2),
-                              shape: BoxShape.circle,
-                            ),
-                            child: Icon(
-                              Icons.search_off,
-                              color: Colors.orange.shade300,
-                              size: 24,
-                            ),
-                          ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'No printers found',
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w600,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  'Make sure your NanoDLP printer is online and on the same network.',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.orange.shade200
-                                        .withValues(alpha: 0.8),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                  const SizedBox(height: 24),
-
-                  // Scan button
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      onPressed: _isScanning ? null : _startScan,
-                      icon: _isScanning
-                          ? const SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                valueColor: AlwaysStoppedAnimation<Color>(
-                                  Colors.white,
+                    _buildDiscoveryStatus(),
+                    if (_logs.isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      Card(
+                        child: Padding(
+                          padding: const EdgeInsets.all(12),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Discovery Log',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.white.withValues(alpha: 0.7),
+                                  fontWeight: FontWeight.w600,
                                 ),
                               ),
-                            )
-                          : const Icon(Icons.refresh, size: 18),
-                      label: Text(_isScanning ? 'Scanning...' : 'Rescan Network'),
-                    ),
-                  ),
-                  const SizedBox(height: 28),
-
-                  // Logs (if any)
-                  if (_logs.isNotEmpty) ...[
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF0F172A),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.05),
-                        ),
-                      ),
-                      constraints: const BoxConstraints(maxHeight: 120),
-                      child: SingleChildScrollView(
-                        child: Text(
-                          _logs.join('\n'),
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontFamily: 'monospace',
-                            color: Colors.white.withValues(alpha: 0.5),
+                              const SizedBox(height: 8),
+                              ConstrainedBox(
+                                constraints: const BoxConstraints(
+                                  maxHeight: 120,
+                                ),
+                                child: SingleChildScrollView(
+                                  child: Text(
+                                    _logs.join('\n'),
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      fontFamily: 'monospace',
+                                      color: Colors.white.withValues(
+                                        alpha: 0.52,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ),
-                    ),
+                    ],
                   ],
-                ],
+                ),
               ),
             ),
           ),
@@ -462,9 +323,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    CircularProgressIndicator(
-                      color: Colors.cyan.shade300,
-                    ),
+                    CircularProgressIndicator(color: Colors.cyan.shade300),
                     const SizedBox(height: 16),
                     Text(
                       'Fetching printer details...',
@@ -478,6 +337,98 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               ),
             ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildDiscoveryStatus() {
+    if (_devices.isNotEmpty) {
+      return Card(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.check_circle, color: Colors.greenAccent.shade200),
+                  const SizedBox(width: 8),
+                  Text(
+                    '${_devices.length} printer${_devices.length == 1 ? '' : 's'} found',
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Select a printer to continue',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.white.withValues(alpha: 0.65),
+                ),
+              ),
+              const SizedBox(height: 14),
+              ..._devices.map((device) => _buildDeviceCard(device)),
+            ],
+          ),
+        ),
+      );
+    }
+
+    if (_isScanning) {
+      return const SizedBox.shrink();
+    }
+
+    final noIpv4 = _scanTotal == 0;
+    return Card(
+      child: Container(
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          border: Border(
+            left: BorderSide(
+              color: (noIpv4 ? Colors.redAccent : Colors.orangeAccent)
+                  .withValues(alpha: 0.8),
+              width: 3,
+            ),
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              noIpv4 ? Icons.wifi_off : Icons.search_off,
+              color: noIpv4 ? Colors.redAccent : Colors.orangeAccent,
+              size: 22,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    noIpv4 ? 'No IPv4 network detected' : 'No printers found',
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    noIpv4
+                        ? 'Connect to Wi‑Fi or Ethernet with IPv4 enabled, then rescan.'
+                        : 'Make sure your NanoDLP printer is online and on the same network.',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.white.withValues(alpha: 0.7),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -502,16 +453,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               shape: BoxShape.circle,
               gradient: isActive
                   ? LinearGradient(
-                      colors: [
-                        Colors.cyan.shade400,
-                        Colors.blue.shade400,
-                      ],
+                      colors: [Colors.cyan.shade400, Colors.blue.shade400],
                     )
                   : LinearGradient(
-                      colors: [
-                        Colors.grey.shade700,
-                        Colors.grey.shade800,
-                      ],
+                      colors: [Colors.grey.shade700, Colors.grey.shade800],
                     ),
               boxShadow: isActive
                   ? [
@@ -533,11 +478,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                         fontSize: 16,
                       ),
                     )
-                  : Icon(
-                      Icons.check,
-                      color: Colors.white,
-                      size: 20,
-                    ),
+                  : Icon(Icons.check, color: Colors.white, size: 20),
             ),
           ),
           const SizedBox(width: 16),
@@ -573,7 +514,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
   Widget _buildDeviceCard(NanoDlpDevice device) {
     final isHovered = _hoveredDeviceIp == device.ipAddress;
-    
+
     return MouseRegion(
       cursor: SystemMouseCursors.click,
       onEnter: (_) => setState(() => _hoveredDeviceIp = device.ipAddress),
@@ -599,11 +540,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           ),
           child: Row(
             children: [
-              Icon(
-                Icons.print,
-                color: Colors.cyan.shade300,
-                size: 24,
-              ),
+              Icon(Icons.print, color: Colors.cyan.shade300, size: 24),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(

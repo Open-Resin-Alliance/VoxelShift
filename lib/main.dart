@@ -60,15 +60,17 @@ Future<void> main(List<String> args) async {
 
   print('[Main] Startup complete.');
 
-  if (postProcessorFile != null && (Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
+  if (postProcessorFile != null &&
+      (Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
     await windowManager.ensureInitialized();
     final windowOptions = WindowOptions(
       size: Size(660, 760),
       minimumSize: Size(600, 700),
       center: true,
-      backgroundColor:
-          Platform.isMacOS ? const Color(0xFF0F172A) : Colors.transparent,
-          titleBarStyle: TitleBarStyle.hidden,
+      backgroundColor: Platform.isMacOS
+          ? const Color(0xFF0F172A)
+          : Colors.transparent,
+      titleBarStyle: TitleBarStyle.hidden,
       windowButtonVisibility: false,
     );
 
@@ -167,10 +169,7 @@ Environment variables:
 class VoxelShiftApp extends StatelessWidget {
   final String? postProcessorFile;
 
-  const VoxelShiftApp({
-    super.key,
-    this.postProcessorFile,
-  });
+  const VoxelShiftApp({super.key, this.postProcessorFile});
 
   @override
   Widget build(BuildContext context) {
@@ -267,7 +266,7 @@ class VoxelShiftApp extends StatelessWidget {
 /// Wrapper for post-processor mode.
 class _PostProcessorWrapper extends StatefulWidget {
   final String filePath;
-  
+
   const _PostProcessorWrapper({required this.filePath});
 
   @override
@@ -278,6 +277,7 @@ class _PostProcessorWrapperState extends State<_PostProcessorWrapper> {
   final _activeDeviceStore = ActiveDeviceStore();
   NanoDlpDevice? _activeDevice;
   bool _isLoading = true;
+  bool _skipDeviceSelection = false;
 
   @override
   void initState() {
@@ -293,7 +293,7 @@ class _PostProcessorWrapperState extends State<_PostProcessorWrapper> {
     });
   }
 
-  void _setActiveDevice(NanoDlpDevice device) {
+  void _setActiveDevice(NanoDlpDevice? device) {
     setState(() => _activeDevice = device);
     _activeDeviceStore.save(device);
   }
@@ -303,17 +303,18 @@ class _PostProcessorWrapperState extends State<_PostProcessorWrapper> {
     if (_isLoading) {
       return Scaffold(
         backgroundColor: const Color(0xFF0F172A),
-        body: const Center(
-          child: CircularProgressIndicator(),
-        ),
+        body: const Center(child: CircularProgressIndicator()),
       );
     }
 
-    if (_activeDevice == null) {
+    if (_activeDevice == null && !_skipDeviceSelection) {
       return OnboardingScreen(
         onDeviceSelected: (device) {
+          if (device == null) {
+            setState(() => _skipDeviceSelection = true);
+            return;
+          }
           _setActiveDevice(device);
-          setState(() {});
         },
       );
     }
@@ -321,7 +322,7 @@ class _PostProcessorWrapperState extends State<_PostProcessorWrapper> {
     return PostProcessorScreen(
       ctbFilePath: widget.filePath,
       activeDevice: _activeDevice,
-      onSetActiveDevice: _setActiveDevice,
+      onSetActiveDevice: (device) => _setActiveDevice(device),
     );
   }
 }
@@ -376,9 +377,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     if (_showOnboarding == null) {
       return Scaffold(
         backgroundColor: const Color(0xFF0F172A),
-        body: const Center(
-          child: CircularProgressIndicator(),
-        ),
+        body: const Center(child: CircularProgressIndicator()),
       );
     }
 
@@ -396,8 +395,11 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       appBar: AppBar(
         title: Row(
           children: [
-            Icon(Icons.view_in_ar,
-                color: Theme.of(context).colorScheme.primary, size: 26),
+            Icon(
+              Icons.view_in_ar,
+              color: Theme.of(context).colorScheme.primary,
+              size: 26,
+            ),
             const SizedBox(width: 10),
             const Text(
               'VoxelShift',
@@ -406,16 +408,25 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
             if (_activeDevice != null) ...[
               const SizedBox(width: 20),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 4,
+                ),
                 decoration: BoxDecoration(
                   color: Colors.tealAccent.withValues(alpha: 0.15),
-                  border: Border.all(color: Colors.tealAccent.withValues(alpha: 0.5)),
+                  border: Border.all(
+                    color: Colors.tealAccent.withValues(alpha: 0.5),
+                  ),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.check_circle, color: Colors.tealAccent, size: 14),
+                    Icon(
+                      Icons.check_circle,
+                      color: Colors.tealAccent,
+                      size: 14,
+                    ),
                     const SizedBox(width: 6),
                     Text(
                       _activeDevice!.displayName,
@@ -446,7 +457,10 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 6,
+                ),
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     colors: [
@@ -461,27 +475,27 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: SizedBox(
-                height: 20,
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    Transform.translate(
-                      offset: const Offset(0, -1.5),
-                      child: Text(
-                        'An Open Resin Alliance Project',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w500,
-                          color: Colors.white.withValues(alpha: 0.9),
-                          height: 1.0,
+                  height: 20,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Transform.translate(
+                        offset: const Offset(0, -1.5),
+                        child: Text(
+                          'An Open Resin Alliance Project',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                            color: Colors.white.withValues(alpha: 0.9),
+                            height: 1.0,
+                          ),
                         ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
               ),
             ),
           ),
@@ -490,9 +504,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       body: IndexedStack(
         index: _tabIndex,
         children: [
-          ConversionScreen(
-            activeDevice: _activeDevice,
-          ),
+          ConversionScreen(activeDevice: _activeDevice),
           NetworkScreen(
             activeDevice: _activeDevice,
             onSetActiveDevice: _setActiveDevice,

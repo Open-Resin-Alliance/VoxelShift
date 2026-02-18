@@ -1563,7 +1563,10 @@ int _nativeWorkerTarget({
   }
 
   final cores = math.max(1, Platform.numberOfProcessors);
-  final defaultMultiplier = gpuActive ? 1.0 : 2.0;
+
+  // Windows: Use 1.0x multiplier for both CPU and GPU modes (Windows scheduler handles SMT well)
+  // macOS: Use 2.0x multiplier for CPU mode to leverage efficiency cores
+  final defaultMultiplier = Platform.isWindows ? 1.0 : (gpuActive ? 1.0 : 2.0);
   final multiplier =
       _positiveEnvDouble(
         gpuActive
