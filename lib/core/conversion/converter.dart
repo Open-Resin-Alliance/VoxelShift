@@ -42,7 +42,14 @@ class CtbToNanoDlpConverter {
       _logListeners.remove(listener);
 
   /// Read CTB file and return metadata without converting.
-  Future<SliceFileInfo> readFileInfo(String ctbPath) async {
+  ///
+  /// Optional [onProgress] callback receives updates:
+  /// - "Opening file..." → "Reading preview..." → "Processing metadata..."
+  Future<SliceFileInfo> readFileInfo(
+    String ctbPath, {
+    void Function(String)? onProgress,
+  }) async {
+    onProgress?.call('Opening file...');
     final parser = await CtbParser.open(ctbPath);
     try {
       var thumbnailPair = ThumbnailPair(
@@ -50,15 +57,18 @@ class CtbToNanoDlpConverter {
         nanodlpThumbnail: null,
       );
       try {
+        onProgress?.call('Reading preview...');
         var rawThumbnail = await parser.readPreviewLarge();
         rawThumbnail ??= await parser.readPreviewSmall();
 
         // Process thumbnail: crop black borders & generate VoxelShift branding
         if (rawThumbnail != null) {
+          onProgress?.call('Processing metadata...');
           thumbnailPair = ThumbnailProcessor.processThumbail(rawThumbnail);
         }
       } catch (_) {}
 
+      onProgress?.call('Validating file...');
       return parser.toSliceFileInfo(
         ctbPath,
         thumbnail: thumbnailPair.guiThumbnail,
@@ -71,7 +81,12 @@ class CtbToNanoDlpConverter {
   /// Check for corrupt layers (fully black or fully white).
   /// Samples up to 10 layers throughout the file.
   /// Returns list of corrupt layer indices, or empty if file is OK.
-  Future<List<int>> checkForCorruptLayers(String ctbPath) async {
+  ///
+  /// Optional [onProgress] callback receives updates like "Checking layer 3 of 8..."
+  Future<List<int>> checkForCorruptLayers(
+    String ctbPath, {
+    void Function(String)? onProgress,
+  }) async {
     final parser = await CtbParser.open(ctbPath);
     final corruptLayers = <int>[];
 
@@ -92,7 +107,13 @@ class CtbToNanoDlpConverter {
         samplesToCheck.add(i);
       }
 
-      for (final layerIdx in samplesToCheck) {
+      final sortedSamples = samplesToCheck.toList()..sort();
+      for (int idx = 0; idx < sortedSamples.length; idx++) {
+        final layerIdx = sortedSamples[idx];
+        onProgress?.call(
+          'Checking layer ${idx + 1} of ${sortedSamples.length}...',
+        );
+
         try {
           final layerData = await parser.readLayerImage(layerIdx);
           if (layerData.isEmpty) continue;
@@ -159,8 +180,11 @@ class CtbToNanoDlpConverter {
         // Once cpuHostWorkers is set, this won't run again - prevents
         // continuously optimizing down to fewer workers
         if (settings.postProcessing.cpuHostWorkers == null) {
+          // Windows: 1.0x multiplier cap (SMT well-handled by scheduler)
+          // macOS: 2.0x multiplier cap (leverage efficiency cores)
+          final platformDefault = Platform.isWindows ? 1.0 : 2.0;
           final maxMultiplier =
-              settings.postProcessing.workerMultiplierCap ?? 2.0;
+              settings.postProcessing.workerMultiplierCap ?? platformDefault;
           final optimal = report.calculateOptimalWorkerCount(
             maxMultiplier: maxMultiplier,
           );
